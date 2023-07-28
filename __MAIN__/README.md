@@ -244,8 +244,6 @@
     * Request parameters:
         * problem_id: integer
     * Request body:
-        * id: integer
-        * problem_id: integer
         * input: string
         * solution: string
         * time_restriction: integer
