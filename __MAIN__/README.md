@@ -10,7 +10,7 @@
     * Request parameters:
         * empty
     * Response body:
-        * "This is a root endpoint of the API"
+        * examples of data types
 
 * ### POST "/users" — create a user
     * Request headers:
@@ -84,6 +84,22 @@
     * Response body:
         * empty
 
+* ### GET "/users/{username}/teams?only_owned={only_owned}&only_active={only_active}" — get all users teams
+    * Request headers:
+        * empty
+    * Request parameters:
+        * username: string
+        * only_owned: boolean
+        * only_active: boolean
+    * Request body:
+        * empty
+    * Response body:
+        * teams: array[ {
+            * name: string
+            * owner_username: string
+            * active: boolean
+        } ]
+
 * ### PUT "/teams/{team_name}/activate" — activate a team
     * Request headers:
         * Authroization: string (access token)
@@ -147,8 +163,8 @@
             * username: string
             * email: string
             * name: string
-            * confirmed: integer (0(no) or 1(yes))
-            } ]
+            * confirmed: boolean
+        } ]
 
 * ### PUT "/teams/{team_name}/members/{team_member_username}/confirm" — confirm a team member
     * Request headers:
@@ -169,7 +185,12 @@
     * Request body:
         * name: string
         * statement: string
-        * private: integer (0(no) or 1(yes))
+        * input_statement: string
+        * output_statement: string
+        * notes: string
+        * time_restriction: integer
+        * memory_restriction: integer
+        * private: boolean
     * Response body:
         * empty
 
@@ -182,10 +203,37 @@
         * empty
     * Response body:
         * id: integer
-        * author_user_id: integer
+        * author_user_uisername: string
         * name: string
         * statement: string
-        * private: integer (0(no) or 1(yes))
+        * input_statement: string
+        * output_statement: string
+        * notes: string
+        * time_restriction: integer
+        * memory_restriction: integer
+        * private: boolean
+
+* ### GET "/users/{username}/problems?only_public={only_public}" — get all users teams
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * username: string
+        * only_public: boolean
+    * Request body:
+        * empty
+    * Response body:
+        * problems: array[ {
+            * id: integer
+            * author_user_uisername: string
+            * name: string
+            * statement: string
+            * input_statement: string
+            * output_statement: string
+            * notes: string
+            * time_restriction: integer
+            * memory_restriction: integer
+            * private: boolean
+        } ]
 
 * ### PUT "/problems/{problem_id}/make-public" — make a problem public
     * Request headers:
@@ -225,6 +273,11 @@
     * Request body:
         * name: string?
         * statement: string?
+        * input_statement: string?
+        * output_statement: string?
+        * notes: string?
+        * time_restriction: integer?
+        * memory_restriction: integer?
     * Response body:
         * empty
 
@@ -246,9 +299,8 @@
     * Request body:
         * input: string
         * solution: string
-        * time_restriction: integer
-        * memory_restriction: integer
-        * opened: integer (0(no) or 1(yes))
+        * score: integer
+        * opened: boolean
     * Response body:
         * empty
 
@@ -261,17 +313,19 @@
     * Request body:
         * empty
     * Response body:
+        * id: integer
+        * problem_id: integer
         * input: string
         * solution: string
-        * time_restriction: integer
-        * memory_restriction: integer
-        * opened: integer (0(no) or 1(yes))
+        * score: integer
+        * opened: boolean
 
-* ### GET "/problems/{problem_id}/test-cases" — get test cases
+* ### GET "/problems/{problem_id}/test-cases?only_opened={only_opened}" — get test cases
     * Request headers:
         * Authroization: string (access token)
     * Request parameters:
         * problem_id: integer
+        * only_opened: boolean
     * Request body:
         * empty
     * Response body:
@@ -280,9 +334,8 @@
             * problem_id: integer
             * input: string
             * solution: string
-            * time_restriction: integer
-            * memory_restriction: integer
-            * opened: integer (0(no) or 1(yes))
+            * score: integer
+            * opened: boolean
         } ]
 
 * ### PUT "/problems/{problem_id}/test-cases/{test_case_id}/make-opened" — make a test case opened
@@ -316,8 +369,7 @@
     * Request body:
         * input: string?
         * solution: string?
-        * time_restriction: integer?
-        * memory_restriction: integer?
+        * score: integer?
     * Response body:
         * empty
 

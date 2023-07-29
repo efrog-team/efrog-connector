@@ -127,6 +127,23 @@ def get_team(id: int = -1, name: str = '', individual: int = -1) -> Team | None:
             else:
                 return Team(id=res['id'], name=res['name'], owner_user_id=res['owner_user_id'], active=res['active'], individual=res['individual'])
 
+def get_teams_by_user(username: str, only_owned: bool, only_active: bool) -> list[Team]:
+    connection: MySQLConnectionAbstract
+    with MySQLConnection(**database_config) as connection:
+        connection.autocommit = True
+        cursor: MySQLCursorAbstract
+        with connection.cursor(dictionary=True) as cursor:
+            user: User | None = get_user(username=username)
+            if user is not None:
+                cursor.execute(f"SELECT teams.id, teams.name, teams.owner_user_id, teams.active, teams.individual FROM teams INNER JOIN team_members ON teams.id = team_members.team_id WHERE team_members.member_user_id = users.id AND team.individual = 0{f' AND team.owner_user_id = {user.id}' if only_owned else ''}{' AND team.active = 1' if only_active else ''}")
+                res: Any = cursor.fetchall()
+                teams: list[Team] = []
+                for team in res:
+                    teams.append(Team(id=team['id'], name=team['name'], owner_user_id=team['owner_user_id'], active=team['active'], individual=team['individual']))
+                return teams
+            else:
+                raise HTTPException(status_code=404, detail="User does not exist")
+
 def activate_deactivate_team(team_name: str, token: str, active: int) -> None:
     connection: MySQLConnectionAbstract
     with MySQLConnection(**database_config) as connection:

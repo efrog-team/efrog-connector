@@ -56,38 +56,50 @@ class Problem(BaseModel):
     author_user_id: int
     name: str
     statement: str
+    input_statement: str
+    output_statement: str
+    notes: str
+    time_restriction: int
+    memory_restriction: int
     private: int
 
 class ProblemRequest(BaseModel):
     name: str
     statement: str
-    private: int
+    input_statement: str
+    output_statement: str
+    notes: str
+    time_restriction: int
+    memory_restriction: int
+    private: bool
 
 class ProblemRequestUpdate(BaseModel):
     name: str | None
     statement: str | None
+    input_statement: str
+    output_statement: str
+    notes: str
+    time_restriction: int
+    memory_restriction: int
 
 class TestCase(BaseModel):
     id: int
     problem_id: int
     input: str
     solution: str
-    time_restriction: int
-    memory_restriction: int
+    score: int
     opened: int
 
 class TestCaseRequest(BaseModel):
     input: str
     solution: str
-    time_restriction: int
-    memory_restriction: int
-    opened: int
+    score: int
+    opened: bool
 
 class TestCaseRequestUpdate(BaseModel):
     input: str | None
     solution: str | None
-    time_restriction: int | None
-    memory_restriction: int | None
+    score: int | None
 
 class Submission(BaseModel):
     id: int
@@ -107,9 +119,8 @@ class SubmissionResult(BaseModel):
     id: int
     submission_id: int
     test_case_id: int
-    error: str
-    output: str
-    correct: int
+    verdict_id: int
+    verdict_details: str
     time_taken: int
     memory_taken: int
 
@@ -121,3 +132,7 @@ class Language(BaseModel):
     name: str
     version: str
     supported: int
+
+class Verdict(BaseModel):
+    id: int
+    text: str

@@ -18,14 +18,14 @@ def create_test_case(test_case: TestCase | TestCaseRequest, problem_id: int, tok
         cursor: MySQLCursorAbstract
         with connection.cursor(dictionary=True) as cursor:
             if isinstance(test_case, TestCase):
-                cursor.execute(f"INSERT INTO test_cases (problem_id, input, solution, time_restriction, memory_restriction, opened) VALUES ({test_case.problem_id}, '{test_case.input}', '{test_case.solution}', {test_case.time_restriction}, {test_case.memory_restriction}, {test_case.opened})")
+                cursor.execute(f"INSERT INTO test_cases (problem_id, input, solution, score, opened) VALUES ({test_case.problem_id}, '{test_case.input}', '{test_case.solution}', {test_case.score}, {test_case.opened})")
             else:
                 problem: Problem | None = get_problem(problem_id, token)
                 if problem is not None:
                     if check_if_problem_can_be_edited(problem_id, token):
                         author_user_id: int | None = get_and_check_user_by_token(token).id
                         if problem.author_user_id == author_user_id:
-                            cursor.execute(f"INSERT INTO test_cases (problem_id, input, solution, time_restriction, memory_restriction, opened) VALUES ({problem_id}, '{test_case.input}', '{test_case.solution}', {test_case.time_restriction}, {test_case.memory_restriction}, {test_case.opened})")
+                            cursor.execute(f"INSERT INTO test_cases (problem_id, input, solution, score, opened) VALUES ({problem_id}, '{test_case.input}', '{test_case.solution}', {test_case.score}, {int(test_case.opened)})")
                         else:
                             raise HTTPException(status_code=403, detail="You are not the author of the problem")
                     else:
@@ -42,12 +42,23 @@ def get_test_case(id: int, problem_id: int, token: str = '') -> TestCase | None:
             problem: Problem | None = get_problem(problem_id, token)
             if problem is not None:
                 if (problem.private == 1 and token != '' and problem.author_user_id == get_and_check_user_by_token(token).id) or problem.private == 0:
-                    cursor.execute(f"SELECT id, problem_id, input, solution, time_restriction, memory_restriction, opened FROM test_cases WHERE id = {id}")
+                    cursor.execute(f"SELECT id, problem_id, input, solution, score, opened FROM test_cases WHERE id = {id}")
                     res: Any = cursor.fetchone()
                     if res is None:
                         return None
                     else:
-                        return TestCase(id=res['id'], problem_id=res['problem_id'], input=res['input'], solution=res['solution'], time_restriction=res['time_restriction'], memory_restriction=res['memory_restriction'], opened=res['opened'])
+                        test_case: TestCase =  TestCase(id=res['id'], problem_id=res['problem_id'], input=res['input'], solution=res['solution'], score=res['score'], opened=res['opened'])
+                        if test_case.opened == 1:
+                            return test_case
+                        else:
+                            if token != '' and problem.author_user_id == get_and_check_user_by_token(token).id:
+                                return test_case
+                            elif token == '':
+                                raise HTTPException(status_code=403, detail="Test case is closed, pass the token please")
+                            elif problem.author_user_id != get_and_check_user_by_token(token).id:
+                                raise HTTPException(status_code=403, detail="You are not the author of this cloesed test case")
+                            else:
+                                raise HTTPException(status_code=500, detail="Internal error")
                 elif token == '':
                     raise HTTPException(status_code=403, detail="Problem is private, pass the token please")
                 elif problem.author_user_id != get_and_check_user_by_token(token).id:
@@ -57,7 +68,7 @@ def get_test_case(id: int, problem_id: int, token: str = '') -> TestCase | None:
             else:
                 raise HTTPException(status_code=404, detail="Problem does not exist")
 
-def get_test_cases(problem_id: int, token: str = '') -> list[TestCase]:
+def get_test_cases(problem_id: int, only_opened: bool, token: str = '') -> list[TestCase]:
     connection: MySQLConnectionAbstract
     with MySQLConnection(**database_config) as connection:
         connection.autocommit = True
@@ -65,17 +76,21 @@ def get_test_cases(problem_id: int, token: str = '') -> list[TestCase]:
         with connection.cursor(dictionary=True) as cursor:
             problem: Problem | None = get_problem(problem_id, token)
             if problem is not None:
-                if (problem.private == 1 and token != '' and problem.author_user_id == get_and_check_user_by_token(token).id) or problem.private == 0:
-                    cursor.execute(f"SELECT id, problem_id, input, solution, time_restriction, memory_restriction, opened FROM test_cases WHERE problem_id = {problem_id}")
+                if (problem.private == 1 and token != '' and problem.author_user_id == get_and_check_user_by_token(token).id) or (problem.private == 0 and not only_opened and token != '' and problem.author_user_id == get_and_check_user_by_token(token).id) or (problem.private == 0 and only_opened):
+                    cursor.execute(f"SELECT id, problem_id, input, solution, score, opened FROM test_cases WHERE problem_id = {problem_id}{' AND opened = 1' if only_opened else ''}")
                     res: Any = cursor.fetchall()
                     test_cases: list[TestCase] = []
                     for test_case in res:
-                        test_cases.append(TestCase(id=test_case['id'], problem_id=test_case['problem_id'], input=test_case['input'], solution=test_case['solution'], time_restriction=test_case['time_restriction'], memory_restriction=test_case['memory_restriction'], opened=test_case['opened']))
+                        test_cases.append(TestCase(id=test_case['id'], problem_id=test_case['problem_id'], input=test_case['input'], solution=test_case['solution'], score=test_case['score'], opened=test_case['opened']))
                     return test_cases
-                elif token == '':
+                elif problem.private == 1 and token == '':
                     raise HTTPException(status_code=403, detail="Problem is private, pass the token please")
-                elif problem.author_user_id != get_and_check_user_by_token(token).id:
+                elif problem.private == 1 and problem.author_user_id != get_and_check_user_by_token(token).id:
                     raise HTTPException(status_code=403, detail="You are not the author of this private problem")
+                elif problem.private == 0 and not only_opened and token == '':
+                    raise HTTPException(status_code=403, detail="You are trying to get not only opened test cases, pass the token please")
+                elif problem.private == 0 and not only_opened and problem.author_user_id != get_and_check_user_by_token(token).id:
+                    raise HTTPException(status_code=403, detail="You are not the author of this problem to access not only opened test cases")
                 else:
                     raise HTTPException(status_code=500, detail="Internal error")
             else:
@@ -118,10 +133,8 @@ def update_test_case(id: int, problem_id: int, test_case_update: TestCaseRequest
                                 cursor.execute(f"UPDATE test_cases SET input = '{test_case_update.input}' WHERE id = {id}")
                             if test_case_update.solution is not None and test_case_update.solution != '':
                                 cursor.execute(f"UPDATE test_cases SET solution = '{test_case_update.solution}' WHERE id = {id}")
-                            if test_case_update.time_restriction is not None and test_case_update.time_restriction != -1:
-                                cursor.execute(f"UPDATE test_cases SET time_restriction = {test_case_update.time_restriction} WHERE id = {id}")
-                            if test_case_update.memory_restriction is not None and test_case_update.memory_restriction != -1:
-                                cursor.execute(f"UPDATE test_cases SET memory_restriction = {test_case_update.memory_restriction} WHERE id = {id}")
+                            if test_case_update.score is not None and test_case_update.score >= 0:
+                                cursor.execute(f"UPDATE test_cases SET score = {test_case_update.score} WHERE id = {id}")
                         else:
                             raise HTTPException(status_code=403, detail="You are not the author of the problem")
                     else:

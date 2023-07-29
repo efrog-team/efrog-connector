@@ -55,7 +55,7 @@ def create_submission_result(submission_result: SubmissionResult) -> None:
         connection.autocommit = True
         cursor: MySQLCursorAbstract
         with connection.cursor(dictionary=True) as cursor:
-            cursor.execute(f"INSERT INTO submission_results (submission_id, test_case_id, error, output, correct, time_taken, memory_taken) VALUES ({submission_result.submission_id}, {submission_result.test_case_id}, {submission_result.error}, '{submission_result.output}', {submission_result.correct}, {submission_result.time_taken}, {submission_result.memory_taken})")
+            cursor.execute(f"INSERT INTO submission_results (submission_id, test_case_id, verdict_id, verdict_details, time_taken, memory_taken) VALUES ({submission_result.submission_id}, {submission_result.test_case_id}, {submission_result.verdict_id}, '{submission_result.verdict_details}', {submission_result.time_taken}, {submission_result.memory_taken})")
 
 def get_submission_with_results(id: int, token: str) -> SubmissionWithResults:
     connection: MySQLConnectionAbstract
@@ -66,11 +66,11 @@ def get_submission_with_results(id: int, token: str) -> SubmissionWithResults:
             submission: Submission | None = get_submission(id)
             if submission is not None:
                 if submission.author_user_id == get_and_check_user_by_token(token).id:
-                    cursor.execute(f"SELECT id, submission_id, test_case_id, error, output, correct, time_taken, memory_taken FROM submission_results WHERE submission_id = {submission.id}")
+                    cursor.execute(f"SELECT id, submission_id, test_case_id, verdict_id, verdict_details, time_taken, memory_taken FROM submission_results WHERE submission_id = {submission.id}")
                     res: Any = cursor.fetchall()
                     results: list[SubmissionResult] = []
                     for result in res:
-                        results.append(SubmissionResult(id=result['id'], submission_id=res['submission_id'], test_case_id=result['test_case_id'], error=result['error'], output=result['output'], correct=result['correct'], time_taken=result['time_taken'], memory_taken=result['memory_taken']))
+                        results.append(SubmissionResult(id=result['id'], submission_id=res['submission_id'], test_case_id=result['test_case_id'], verdict_id=result['verdict_id'], verdict_details=result['verdict_details'], time_taken=result['time_taken'], memory_taken=result['memory_taken']))
                     return SubmissionWithResults(id=submission.id, author_user_id=submission.author_user_id, problem_id=submission.problem_id, code=submission.code, language_id=submission.language_id, time_sent=submission.time_sent, results=results)
                 else:
                     raise HTTPException(status_code=403, detail="You are not the author of the submission")
