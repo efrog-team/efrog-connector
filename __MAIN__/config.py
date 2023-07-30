@@ -1,7 +1,8 @@
 import os
 from dotenv import dotenv_values
 
-config: dict[str, str | None] = dotenv_values('.env')
+app_path: str = os.path.dirname(__file__).replace("\\", "/")
+config: dict[str, str | None] = dotenv_values(f'{app_path}/.env')
 
 try:
     host: str | None = os.environ['DB_HOST']
