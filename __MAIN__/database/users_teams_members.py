@@ -29,7 +29,7 @@ def create_user(user: User | UserRequest) -> None:
                     cursor.execute(f"INSERT INTO users (username, email, name, password) VALUES ('{user.username}', '{user.email}', '{user.name}', '{password}')")
                     res_user_id: int | None = cursor.lastrowid
                     if res_user_id is not None:
-                        create_team(Team(id=-1, name=user.name, owner_user_id=res_user_id, active=1, individual=1))
+                        create_team(Team(id=-1, name=user.username, owner_user_id=res_user_id, active=1, individual=1))
                     else:
                         raise HTTPException(status_code=500, detail="Internal error")
                 else:
