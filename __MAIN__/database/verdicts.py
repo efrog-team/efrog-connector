@@ -16,7 +16,7 @@ def create_verdict(verdict: Verdict) -> None:
         with connection.cursor(dictionary=True) as cursor:
             cursor.execute(f"INSERT INTO verdicts (name) VALUES ('{verdict.text}')")
 
-def get_verdict(id: str) -> Verdict | None:
+def get_verdict(id: int) -> Verdict | None:
     connection: MySQLConnectionAbstract
     with MySQLConnection(**database_config) as connection:
         connection.autocommit = True

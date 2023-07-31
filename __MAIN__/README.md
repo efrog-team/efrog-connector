@@ -192,7 +192,7 @@
         * memory_restriction: integer
         * private: boolean
     * Response body:
-        * empty
+        * problem_id: integer
 
 * ### GET "/problems/{problem_id}" — get a problem
     * Request headers:
@@ -302,7 +302,7 @@
         * score: integer
         * opened: boolean
     * Response body:
-        * empty
+        * test_case_id: integer
 
 * ### GET "/problems/{problem_id}/test-cases/{test_case_id}" — get a test case
     * Request headers:
@@ -384,13 +384,94 @@
     * Response body:
         * empty
 
+* ### POST "/submissions" — get a submission
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * empty
+    * Request body:
+        * problem_id: integer
+        * code: string
+        * language_name: string
+        * language_version: string
+    * Response body:
+        * submission_id: integer
+
+* ### GET "/submissions/{submission_id}" — get a submission
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * submission_id: integer
+    * Request body:
+        * empty
+    * Response body (200 Code):
+        * id: integer
+        * author_user_username: string
+        * problem_id: integer
+        * code: string
+        * language_name: string
+        * language_version: string
+        * time_sent: string (in the form of datetime %Y-%m-%d %H:%M:%S)
+        * checked: boolean
+        * correct_score: integer
+        * total_score: integer
+        * results: array[ {
+            id: integer
+            submission_id: integer
+            test_case_id: integer
+            test_case_score: integer
+            verdict_text: string
+            verdict_details: string
+            time_taken: integer
+            cpu_time_taken: integer
+            memory_taken: integer
+        } ]
+    * Response body (202 Code):
+        * realime_link: string (link)
+
+* ### WS "/submissions/{submission_id}/realtime" — realtime results of submission
+    * Each message from the server:
+        * Result from the checking system
+
+* ### GET "/submissions/{submission_id}/public" — get public data about a submission
+    * Request headers:
+        * empty
+    * Request parameters:
+        * submission_id: integer
+    * Request body:
+        * empty
+    * Response body:
+        * id: integer
+        * problem_id: integer
+        * language_name: string
+        * language_version: string
+        * time_sent: string (in the form of date %Y-%m-%d %H:%M:%S)
+        * total_verdict: string
+
+* ### GET "/users/{username}/submissions/public" — get public data about all user's submissions
+    * Request headers:
+        * empty
+    * Request parameters:
+        * username: string
+    * Request body:
+        * empty
+    * Response body:
+        * submissions: array[ {
+            * id: integer
+            * problem_id: integer
+            * language_name: string
+            * language_version: string
+            * time_sent: string (in the form of date %Y-%m-%d %H:%M:%S)
+            * total_verdict: string
+        } ]
+
 * ### WS "/task" — temporary websocket request to send a solution on the test problem about the square of the number
     * First message to the server:
         * Code for the problem
     * Second message to the server:
         * Language
     * Each message from the server:
-        * Result from the testing system
+        * Result from the checking system
 
 * ### GET "/test-submit?id={id}&language={language}" — temporary request to send a solution on the test problem about the square of the number and the code checks just one test case
     * Request headers:

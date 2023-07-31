@@ -108,6 +108,15 @@ class Submission(BaseModel):
     code: str
     language_id: int
     time_sent: datetime
+    checked: int
+
+class SubmissionPublic(BaseModel):
+    id: int
+    author_user_id: int
+    problem_id: int
+    language_id: int
+    time_sent: datetime
+    total_verdict_id: int
 
 class SubmissionRequest(BaseModel):
     problem_id: int
@@ -122,6 +131,7 @@ class SubmissionResult(BaseModel):
     verdict_id: int
     verdict_details: str
     time_taken: int
+    cpu_time_taken: int
     memory_taken: int
 
 class SubmissionWithResults(Submission):

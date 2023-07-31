@@ -31,7 +31,7 @@ def create_user(user: User | UserRequest) -> None:
                     if res_user_id is not None:
                         create_team(Team(id=-1, name=user.username, owner_user_id=res_user_id, active=1, individual=1))
                     else:
-                        raise HTTPException(status_code=500, detail="Internal error")
+                        raise HTTPException(status_code=500, detail="Internal Server Error")
                 else:
                     raise HTTPException(status_code=409, detail="User already exists")
             else:
@@ -110,7 +110,7 @@ def create_team(team: Team | TeamRequest, token: str = '') -> None:
                 if res_team_id is not None:
                     create_team_memeber(TeamMember(id=-1, member_user_id=owner_user_id, team_id=res_team_id, confirmed=1))
                 else:
-                    raise HTTPException(status_code=500, detail="Internal error")
+                    raise HTTPException(status_code=500, detail="Internal Server Error")
             else:
                 raise HTTPException(status_code=409, detail="Team already exists")
                 

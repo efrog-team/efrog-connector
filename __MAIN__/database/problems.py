@@ -22,7 +22,7 @@ def create_problem(problem: Problem | ProblemRequest, token: str = '') -> int:
             if res_problem_id is not None:
                 return res_problem_id
             else:
-                raise HTTPException(status_code=500, detail="Internal error")
+                raise HTTPException(status_code=500, detail="Internal Server Error")
 
 def get_problem(id: int, token: str = '') -> Problem | None:
     connection: MySQLConnectionAbstract
@@ -43,7 +43,7 @@ def get_problem(id: int, token: str = '') -> Problem | None:
                 elif problem.author_user_id != get_and_check_user_by_token(token).id:
                     raise HTTPException(status_code=403, detail="You are not the author of this private problem")
                 else:
-                    raise HTTPException(status_code=500, detail="Internal error")
+                    raise HTTPException(status_code=500, detail="Internal Server Error")
 
 def get_problems_by_author(username: str, only_public: bool, token: str = '') -> list[Problem]:
     connection: MySQLConnectionAbstract
@@ -65,7 +65,7 @@ def get_problems_by_author(username: str, only_public: bool, token: str = '') ->
                 elif get_and_check_user_by_token(token).id != user.id:
                     raise HTTPException(status_code=403, detail="You are not the author of private problems that you are trying to access")
                 else:
-                    raise HTTPException(status_code=500, detail="Internal error")
+                    raise HTTPException(status_code=500, detail="Internal Server Error")
             else:
                 raise HTTPException(status_code=404, detail="User does not exist")
 

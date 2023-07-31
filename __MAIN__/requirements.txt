@@ -13,5 +13,6 @@ python-multipart==0.0.6
 sniffio==1.3.0
 starlette==0.27.0
 typing_extensions==4.7.0
+ulogging==1.1.0
 uvicorn==0.22.0
 websockets==11.0.3

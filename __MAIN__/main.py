@@ -6,24 +6,32 @@ from database.users_teams_members import create_team as create_team_db, get_team
 from database.users_teams_members import create_team_memeber as create_team_memeber_db, get_team_members_by_team_name as get_team_members_db, confirm_team_member as confirm_team_member_db
 from database.problems import create_problem as create_problem_db, get_problem as get_problem_db, get_problems_by_author as get_problems_by_author_db, make_problem_public_private as make_problem_public_private_db, check_if_problem_can_be_edited as check_if_problem_can_be_edited_db, update_problem as update_problem_db, delete_problem as delete_problem_db
 from database.test_cases import create_test_case as create_test_case_db, get_test_case as get_test_case_db, get_test_cases as get_test_cases_db, make_test_case_opened_closed as make_test_case_opened_closed_db, update_test_case as update_test_case_db, delete_test_case as delete_test_case_db
-from models import User, UserRequest, UserToken, UserRequestUpdate, TeamRequest, TeamMemberRequest, Problem, ProblemRequest, ProblemRequestUpdate, TestCase, TestCaseRequest, TestCaseRequestUpdate
+from database.submissions_results import create_submission as create_submission_db, mark_submission_as_checked as mark_submission_as_checked_db, create_submission_result as create_submission_result_db, get_submission_with_results as get_submission_with_results_db, get_submissions_public_by_user as get_submissions_public_by_user, get_submission_public as get_submission_public_db
+from database.languages import get_language_by_id as get_language_by_id_db
+from database.verdicts import get_verdict as get_verdict_db
+from models import User, UserRequest, UserToken, UserRequestUpdate, TeamRequest, TeamMemberRequest, Problem, ProblemRequest, ProblemRequestUpdate, TestCase, TestCaseRequest, TestCaseRequestUpdate, SubmissionPublic, SubmissionRequest, SubmissionResult, SubmissionWithResults, Language, Verdict
 from security.hash import hash_hex
 from security.jwt import encode_token
 from typing import Annotated
-from checker_connection import Library, Result
-from asyncio import get_running_loop, AbstractEventLoop
+from checker_connection import Library, TestResult, CreateFilesResult
+from asyncio import get_running_loop, AbstractEventLoop, run, Event
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+from current_websocket import CurrentWebsocket
+# from ulogging import Logger
 
 loop: AbstractEventLoop = get_running_loop()
 fs_executor: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=1)
 checker_executor: ProcessPoolExecutor = ProcessPoolExecutor(max_workers=2)
 
+checking_queue: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=4)
+current_websockets: dict[int, CurrentWebsocket] = {}
+
 lib: Library = Library()
 
-def create_files_wrapper(*args: ...) -> int:
+def create_files_wrapper(*args: ...) -> CreateFilesResult:
     return lib.create_files(*args)
 
-def check_test_case_wrapper(*args: ...) -> Result:
+def check_test_case_wrapper(*args: ...) -> TestResult:
     return lib.check_test_case(*args)
 
 def delete_files_wrapper(*args: ...) -> int:
@@ -203,10 +211,11 @@ def put_confirm_team_member(team_name: str, team_member_username: str, authoriza
 @app.post("/problems")
 def post_problem(problem: ProblemRequest, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     if authorization is not None:
-        create_problem_db(problem, authorization)
+        return JSONResponse({
+            'problem_id': create_problem_db(problem, authorization)
+        })
     else:
         raise HTTPException(status_code=401, detail="Invalid token")
-    return JSONResponse({})
 
 @app.get("/problems/{problem_id}")
 def get_problem(problem_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
@@ -300,10 +309,11 @@ def delete_problem(problem_id: int, authorization: Annotated[str | None, Header(
 @app.post("/problems/{problem_id}/test-cases")
 def post_test_case(problem_id: int, test_case: TestCaseRequest, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     if authorization is not None:
-        create_test_case_db(test_case, problem_id, authorization)
+        return JSONResponse({
+            'test_case_id': create_test_case_db(test_case, problem_id, authorization)
+        })
     else:
         raise HTTPException(status_code=401, detail="Invalid token")
-    return JSONResponse({})
 
 @app.get("/problems/{problem_id}/test-cases/{test_case_id}")
 def get_test_case(problem_id: int, test_case_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
@@ -374,6 +384,200 @@ def delete_test_case(problem_id: int, test_case_id: int, authorization: Annotate
         raise HTTPException(status_code=401, detail="Invalid token")
     return JSONResponse({})
 
+def check_problem(submission_id: int, problem_id: int, token: str, code: str, language: str) -> None:
+    create_files_result: CreateFilesResult = lib.create_files(submission_id, code, language)
+    match create_files_result.status:
+        case 0:
+            run(current_websockets[submission_id].send_message(f"Saved succesfully"))
+            if language == 'C++ 17 (g++ 11.2)' or language == 'C 17 (gcc 11.2)':
+                run(current_websockets[submission_id].send_message(f"Compiled succesfully"))
+            test_cases: list[TestCase] = get_test_cases_db(problem_id, False, token)
+            correct_score: int = 0
+            total_score: int = 0
+            for index, test_case in enumerate(test_cases):
+                result: TestResult = lib.check_test_case(submission_id, test_case.id, language, test_case.input, test_case.solution)
+                match result.status:
+                    case 0:
+                        run(current_websockets[submission_id].send_message(f"Test case #{index + 1}: Correct Answer in {result.time}ms ({result.cpu_time}ms)"))
+                        correct_score += test_case.score
+                    case 1:
+                        run(current_websockets[submission_id].send_message(f"Test case #{index + 1}: Wrong Answer in {result.time}ms ({result.cpu_time}ms)"))
+                    case 2:
+                        run(current_websockets[submission_id].send_message(f"Test case #{index + 1}: Compilation Error"))
+                    case 3:
+                        run(current_websockets[submission_id].send_message(f"Test case #{index + 1}: Runtime Error"))
+                    case 4:
+                        run(current_websockets[submission_id].send_message(f"Test case #{index + 1}: Time Limit"))
+                    case 5:
+                        run(current_websockets[submission_id].send_message(f"Test case #{index + 1}: Memory Limit"))
+                    case 6:
+                        run(current_websockets[submission_id].send_message(f"Test case #{index + 1}: Internal Server Error"))
+                    case _:
+                        run(current_websockets[submission_id].send_message(f"Test case #{index + 1}: Unexpected Error"))
+                total_score += test_case.score
+                create_submission_result_db(SubmissionResult(id=-1, submission_id=submission_id, test_case_id=test_case.id, verdict_id=result.status+1, verdict_details='', time_taken=result.time, cpu_time_taken=result.cpu_time, memory_taken=result.memory))
+            run(current_websockets[submission_id].send_message(f"Total result: {correct_score}/{total_score}"))
+        case 5:
+            test_cases: list[TestCase] = get_test_cases_db(problem_id, False, token)
+            for test_case in test_cases:
+                create_submission_result_db(SubmissionResult(id=-1, submission_id=submission_id, test_case_id=test_case.id, verdict_id=6, verdict_details='', time_taken=0, cpu_time_taken=0, memory_taken=0))
+            run(current_websockets[submission_id].send_message(f"Error in compilation or file creation occured"))
+        case 6:
+            test_cases: list[TestCase] = get_test_cases_db(problem_id, False, token)
+            for test_case in test_cases:
+                create_submission_result_db(SubmissionResult(id=-1, submission_id=submission_id, test_case_id=test_case.id, verdict_id=7, verdict_details='', time_taken=0, cpu_time_taken=0, memory_taken=0))
+            run(current_websockets[submission_id].send_message(f"Internal Server Error"))
+        case _:
+            run(current_websockets[submission_id].send_message(f"Unexpected Error"))
+    lib.delete_files(submission_id)
+    mark_submission_as_checked_db(submission_id, token)
+    current_websockets[submission_id].safe_set_flag()
+    if current_websockets[submission_id].websocket is None and current_websockets[submission_id].flag is None:
+        del current_websockets[submission_id]
+
+@app.post("/submissions")
+def submit(submission: SubmissionRequest, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+    if authorization is not None:
+        submission_db_id: int = create_submission_db(submission, authorization)
+        current_websockets[submission_db_id] = CurrentWebsocket(None, None, [])
+        checking_queue.submit(check_problem, submission_db_id, submission.problem_id, authorization, submission.code, f"{submission.language_name} ({submission.language_version})")
+        return JSONResponse({
+            'submission_id': submission_db_id
+        })
+    else:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+@app.get("/submissions/{submission_id}")
+def get_submission(submission_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+    if authorization is not None:
+        submission_db: SubmissionWithResults = get_submission_with_results_db(submission_id, authorization)
+        if submission_db.checked:
+            results: list[dict[str, str | int]] = []
+            correct_score: int = 0
+            total_score: int = 0
+            for result in submission_db.results:
+                test_case_db: TestCase | None = get_test_case_db(result.test_case_id, submission_db.problem_id, authorization)
+                if test_case_db is not None:
+                    verdict_db: Verdict | None = get_verdict_db(result.verdict_id)
+                    if verdict_db is not None:
+                        results.append({
+                            'id': result.id,
+                            'submission_id': result.submission_id,
+                            'test_case_id': result.test_case_id,
+                            'test_case_score': test_case_db.score,
+                            'verdict_text': verdict_db.text,
+                            'verdict_details': result.verdict_details,
+                            'time_taken': result.time_taken,
+                            'cpu_time_taken': result.cpu_time_taken,
+                            'memory_taken': result.memory_taken
+                        })
+                        if verdict_db.id == 1:
+                            correct_score += test_case_db.score
+                        total_score += test_case_db.score
+                    else:
+                        raise HTTPException(status_code=404, detail="Verdict does not exist")
+                else:
+                    raise HTTPException(status_code=404, detail="Test case does not exist")
+            user_db: User | None = get_user_db(submission_db.author_user_id)
+            if user_db is not None:
+                language_db: Language | None = get_language_by_id_db(submission_db.language_id)
+                if language_db is not None:
+                    return JSONResponse({
+                        'id': submission_db.id,
+                        'author_user_username': user_db.username,
+                        'problem_id': submission_db.problem_id,
+                        'code': submission_db.code,
+                        'language_name': language_db.name,
+                        'language_version': language_db.version,
+                        'time_sent': submission_db.time_sent.strftime('%Y-%m-%d %H:%M:%S'),
+                        'checked': bool(submission_db.checked),
+                        'correct_score': correct_score,
+                        'total_score': total_score,
+                        'results': results
+                    })
+                else:
+                    raise HTTPException(status_code=404, detail="Language does not exist")
+            else:
+                raise HTTPException(status_code=404, detail="User does not exist")
+        else:
+            return JSONResponse({
+                'realime_link': f"ws://localhost:8000/submissions/{submission_id}/realtime"
+            }, status_code=202)
+    else:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+@app.websocket("/submissions/{submission_id}/realtime")
+async def websocket_endpoint_submissions(websocket: WebSocket, submission_id: int):
+    await websocket.accept()
+    try:
+        if current_websockets[submission_id].websocket is None:
+            current_websockets[submission_id].websocket = websocket
+            current_websockets[submission_id].flag = Event()
+            current_websockets[submission_id].messages_index = 0
+            flag: Event | None = current_websockets[submission_id].flag
+            if flag is not None:
+                await flag.wait()
+            await current_websockets[submission_id].send_accumulated()
+            del current_websockets[submission_id]
+            await websocket.send_text(f"Checking is finished. You can access full submission results by the link: GET http://localhost:8000/submissions/{submission_id}")
+        else:
+            await websocket.send_text("There is already a websocket opened for this submission")
+    except:
+        await websocket.send_text(f"There is no submission testing with such id. Try to access: GET http://localhost:8000/submissions/{submission_id}")
+    await websocket.close()
+
+@app.get("/submissions/{submission_id}/public")
+def get_submission_public(submission_id: int)-> JSONResponse:
+    submission: SubmissionPublic | None = get_submission_public_db(submission_id)
+    if submission is not None:
+        language: Language | None = get_language_by_id_db(submission.language_id)
+        if language is not None:
+            verdict: Verdict | None = get_verdict_db(submission.total_verdict_id)
+            if verdict is not None:
+                return JSONResponse({
+                    'id': submission.id,
+                    'problem_id': submission.problem_id,
+                    'language_name': language.name,
+                    'language_version': language.version,
+                    'time_sent': submission.time_sent.strftime('%Y-%m-%d %H:%M:%S'),
+                    'total_verdict': verdict.text
+                })
+            else:
+                raise HTTPException(status_code=404, detail="Verdict does not exist")
+        else:
+            raise HTTPException(status_code=404, detail="Language does not exist")
+    else:
+        raise HTTPException(status_code=404, detail="Submission does not exist")
+
+@app.get("/users/{username}/submissions/public")
+def get_submissions(username: str)-> JSONResponse:
+    user_db: User | None = get_user_db(username=username)
+    if user_db is not None:
+        res: list[dict[str, str | int]] = []
+        submissions: list[SubmissionPublic] = get_submissions_public_by_user(username)
+        for submission in submissions:
+            language_db: Language | None = get_language_by_id_db(submission.language_id)
+            if language_db is not None:
+                verdict_db: Verdict | None = get_verdict_db(submission.total_verdict_id)
+                if verdict_db is not None:
+                    res.append({
+                        'id': submission.id,
+                        'problem_id': submission.problem_id,
+                        'language_name': language_db.name,
+                        'language_version': language_db.version,
+                        'time_sent': submission.time_sent.strftime('%Y-%m-%d %H:%M:%S'),
+                        'total_verdict': verdict_db.text
+                    })
+                else:
+                    raise HTTPException(status_code=404, detail="Verdict does not exist")
+            else:
+                raise HTTPException(status_code=404, detail="Language does not exist")
+        return JSONResponse({
+            'submissions': res
+        })
+    else:
+        raise HTTPException(status_code=404, detail="User does not exist")
+
 @app.websocket("/task")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
@@ -381,7 +585,7 @@ async def websocket_endpoint(websocket: WebSocket):
     code: str = await websocket.receive_text()
     language: str = await websocket.receive_text()
     await websocket.send_text(f"Your request is recieved")
-    if await loop.run_in_executor(fs_executor, create_files_wrapper, submission_id, code, language) == 0:
+    if (await loop.run_in_executor(fs_executor, create_files_wrapper, submission_id, code, language)).status == 0:
         await websocket.send_text(f"Saved succesfully")
         if language == 'C++ 17 (g++ 11.2)' or language == 'C 17 (gcc 11.2)':
             await websocket.send_text(f"Compiled succesfully")
@@ -396,15 +600,15 @@ async def websocket_endpoint(websocket: WebSocket):
         count: int = 1
         correct: int = 0
         for test_case in test_cases:
-            result: Result = (await loop.run_in_executor(checker_executor, check_test_case_wrapper, submission_id, count, language, test_case[0], test_case[1]))
+            result: TestResult = (await loop.run_in_executor(checker_executor, check_test_case_wrapper, submission_id, count, language, test_case[0], test_case[1]))
             match result.status:
                 case 0:
-                    await websocket.send_text(f"Test case #{count}: Correct answer in {result.time}ms ({result.cpu_time}ms)")
+                    await websocket.send_text(f"Test case #{count}: Correct Answer in {result.time}ms ({result.cpu_time}ms)")
                     correct += 1
                 case 1:
-                    await websocket.send_text(f"Test case #{count}: Wrong answer in {result.time}ms ({result.cpu_time}ms)")
+                    await websocket.send_text(f"Test case #{count}: Wrong Answer in {result.time}ms ({result.cpu_time}ms)")
                 case 6:
-                    await websocket.send_text(f"Test case #{count}: Internal error")
+                    await websocket.send_text(f"Test case #{count}: Internal Server Error")
                 case _:
                     await websocket.send_text(f"Test case #{count}: Unexpected error")
             count += 1
@@ -425,8 +629,8 @@ async def test_submit(id: int, language: str) -> str:
             code: str = 'print(int(input()) ** 2)'
         case _:
             return 'Error'
-    if await loop.run_in_executor(fs_executor, create_files_wrapper, id, code, language) == 0:
-        result: Result = await loop.run_in_executor(checker_executor, check_test_case_wrapper, id, id, language, '1', '1')
+    if (await loop.run_in_executor(fs_executor, create_files_wrapper, id, code, language)).status == 0:
+        result: TestResult = await loop.run_in_executor(checker_executor, check_test_case_wrapper, id, id, language, '1', '1')
         fs_executor.submit(delete_files_wrapper, id)
         return f"{result.time}ms ({result.cpu_time}ms)"
     return 'Error'

@@ -11,7 +11,7 @@ from database.problems import get_problem, check_if_problem_can_be_edited
 from fastapi import HTTPException
 from typing import Any
 
-def create_test_case(test_case: TestCase | TestCaseRequest, problem_id: int, token: str = '') -> int | None:
+def create_test_case(test_case: TestCase | TestCaseRequest, problem_id: int, token: str = '') -> int:
     connection: MySQLConnectionAbstract
     with MySQLConnection(**database_config) as connection:
         connection.autocommit = True
@@ -19,6 +19,11 @@ def create_test_case(test_case: TestCase | TestCaseRequest, problem_id: int, tok
         with connection.cursor(dictionary=True) as cursor:
             if isinstance(test_case, TestCase):
                 cursor.execute(f"INSERT INTO test_cases (problem_id, input, solution, score, opened) VALUES ({test_case.problem_id}, '{test_case.input}', '{test_case.solution}', {test_case.score}, {test_case.opened})")
+                test_case_id = cursor.lastrowid
+                if test_case_id is not None:
+                    return test_case_id
+                else:
+                    raise HTTPException(status_code=500, detail="Internal Server Error")
             else:
                 problem: Problem | None = get_problem(problem_id, token)
                 if problem is not None:
@@ -26,6 +31,11 @@ def create_test_case(test_case: TestCase | TestCaseRequest, problem_id: int, tok
                         author_user_id: int | None = get_and_check_user_by_token(token).id
                         if problem.author_user_id == author_user_id:
                             cursor.execute(f"INSERT INTO test_cases (problem_id, input, solution, score, opened) VALUES ({problem_id}, '{test_case.input}', '{test_case.solution}', {test_case.score}, {int(test_case.opened)})")
+                            test_case_id = cursor.lastrowid
+                            if test_case_id is not None:
+                                return test_case_id
+                            else:
+                                raise HTTPException(status_code=500, detail="Internal Server Error")
                         else:
                             raise HTTPException(status_code=403, detail="You are not the author of the problem")
                     else:
@@ -58,13 +68,13 @@ def get_test_case(id: int, problem_id: int, token: str = '') -> TestCase | None:
                             elif problem.author_user_id != get_and_check_user_by_token(token).id:
                                 raise HTTPException(status_code=403, detail="You are not the author of this cloesed test case")
                             else:
-                                raise HTTPException(status_code=500, detail="Internal error")
+                                raise HTTPException(status_code=500, detail="Internal Server Error")
                 elif token == '':
                     raise HTTPException(status_code=403, detail="Problem is private, pass the token please")
                 elif problem.author_user_id != get_and_check_user_by_token(token).id:
                     raise HTTPException(status_code=403, detail="You are not the author of this private problem")
                 else:
-                    raise HTTPException(status_code=500, detail="Internal error")
+                    raise HTTPException(status_code=500, detail="Internal Server Error")
             else:
                 raise HTTPException(status_code=404, detail="Problem does not exist")
 
@@ -92,7 +102,7 @@ def get_test_cases(problem_id: int, only_opened: bool, token: str = '') -> list[
                 elif problem.private == 0 and not only_opened and problem.author_user_id != get_and_check_user_by_token(token).id:
                     raise HTTPException(status_code=403, detail="You are not the author of this problem to access not only opened test cases")
                 else:
-                    raise HTTPException(status_code=500, detail="Internal error")
+                    raise HTTPException(status_code=500, detail="Internal Server Error")
             else:
                 raise HTTPException(status_code=404, detail="Problem does not exist")
 
