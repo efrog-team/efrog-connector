@@ -17,7 +17,8 @@ from checker_connection import Library, TestResult, CreateFilesResult
 from asyncio import get_running_loop, AbstractEventLoop, run, Event
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from current_websocket import CurrentWebsocket
-# from ulogging import Logger
+from multiprocessing import Queue, Process
+from typing import Any
 
 loop: AbstractEventLoop = get_running_loop()
 fs_executor: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=1)
@@ -25,6 +26,7 @@ checker_executor: ProcessPoolExecutor = ProcessPoolExecutor(max_workers=2)
 
 checking_queue: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=4)
 current_websockets: dict[int, CurrentWebsocket] = {}
+processing_queue: Any = Queue()
 
 lib: Library = Library()
 
@@ -384,6 +386,9 @@ def delete_test_case(problem_id: int, test_case_id: int, authorization: Annotate
         raise HTTPException(status_code=401, detail="Invalid token")
     return JSONResponse({})
 
+def check_test_case_process_wrapper(result_queue: Any, *args: ...) -> None:
+    result_queue.put(lib.check_test_case(*args))
+
 def check_problem(submission_id: int, problem_id: int, token: str, code: str, language: str) -> None:
     create_files_result: CreateFilesResult = lib.create_files(submission_id, code, language)
     match create_files_result.status:
@@ -395,13 +400,16 @@ def check_problem(submission_id: int, problem_id: int, token: str, code: str, la
             correct_score: int = 0
             total_score: int = 0
             for index, test_case in enumerate(test_cases):
-                result: TestResult = lib.check_test_case(submission_id, test_case.id, language, test_case.input, test_case.solution)
+                process = Process(target=check_test_case_process_wrapper, args=(processing_queue, submission_id, test_case.id, language, test_case.input, test_case.solution, ))
+                process.start()
+                process.join()
+                result: TestResult = processing_queue.get()
                 match result.status:
                     case 0:
-                        run(current_websockets[submission_id].send_message(f"Test case #{index + 1}: Correct Answer in {result.time}ms ({result.cpu_time}ms)"))
+                        run(current_websockets[submission_id].send_message(f"Test case #{index + 1}: Correct Answer in {result.time}ms ({result.cpu_time}ms) and {result.memory} KB"))
                         correct_score += test_case.score
                     case 1:
-                        run(current_websockets[submission_id].send_message(f"Test case #{index + 1}: Wrong Answer in {result.time}ms ({result.cpu_time}ms)"))
+                        run(current_websockets[submission_id].send_message(f"Test case #{index + 1}: Wrong Answer in {result.time}ms ({result.cpu_time}ms) and {result.memory} KB"))
                     case 2:
                         run(current_websockets[submission_id].send_message(f"Test case #{index + 1}: Compilation Error"))
                     case 3:
