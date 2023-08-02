@@ -150,9 +150,9 @@
     * Response body:
         * empty
 
-* ### GET "/teams/{team_name}/members?only_comfirmed={only_comfirmed}" — create a team memeber
+* ### GET "/teams/{team_name}/members?only_comfirmed={only_comfirmed}" — get a team memebers
     * Request headers:
-        * Authroization: string (access token)
+        * empty
     * Request parameters:
         * team_name: string
         * only_comfirmed: boolean
