@@ -128,7 +128,7 @@
     * Request body:
         * empty
     * Response body:
-        * can: string
+        * can: boolean
 
 * ### DELETE "/teams/{team_name}" — delete a team
     * Request headers:
@@ -263,7 +263,7 @@
     * Request body:
         * empty
     * Response body:
-        * can: string
+        * can: boolean
 
 * ### PUT "/problems/{problem_id}" — update a problem
     * Request headers:
