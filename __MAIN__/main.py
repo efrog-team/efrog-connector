@@ -593,36 +593,43 @@ async def websocket_endpoint(websocket: WebSocket):
     code: str = await websocket.receive_text()
     language: str = await websocket.receive_text()
     await websocket.send_text(f"Your request is recieved")
-    if (await loop.run_in_executor(fs_executor, create_files_wrapper, submission_id, code, language)).status == 0:
-        await websocket.send_text(f"Saved succesfully")
-        if language == 'C++ 17 (g++ 11.2)' or language == 'C 17 (gcc 11.2)':
-            await websocket.send_text(f"Compiled succesfully")
-        test_cases: list[tuple[str, str]] = [
-            ('1', '1'),
-            ('2', '4'),
-            ('3', '9'),
-            ('4', '16'),
-            ('1000', '1000000'),
-            ('1000000', '1000000000000')
-        ]
-        count: int = 1
-        correct: int = 0
-        for test_case in test_cases:
-            result: TestResult = (await loop.run_in_executor(checker_executor, check_test_case_wrapper, submission_id, count, language, test_case[0], test_case[1]))
-            match result.status:
-                case 0:
-                    await websocket.send_text(f"Test case #{count}: Correct Answer in {result.time}ms ({result.cpu_time}ms)")
-                    correct += 1
-                case 1:
-                    await websocket.send_text(f"Test case #{count}: Wrong Answer in {result.time}ms ({result.cpu_time}ms)")
-                case 6:
-                    await websocket.send_text(f"Test case #{count}: Internal Server Error")
-                case _:
-                    await websocket.send_text(f"Test case #{count}: Unexpected error")
-            count += 1
-        await websocket.send_text(f"Total result: {correct}/{count - 1}")
-    else:
-        await websocket.send_text(f"Error in compilation or file creating occured")
+    create_files_result: CreateFilesResult = await loop.run_in_executor(fs_executor, create_files_wrapper, submission_id, code, language)
+    match create_files_result.status:
+        case 0:
+            await websocket.send_text(f"Saved succesfully")
+            if language == 'C++ 17 (g++ 11.2)' or language == 'C 17 (gcc 11.2)':
+                await websocket.send_text(f"Compiled succesfully")
+            test_cases: list[tuple[str, str]] = [
+                ('1', '1'),
+                ('2', '4'),
+                ('3', '9'),
+                ('4', '16'),
+                ('1000', '1000000'),
+                ('1000000', '1000000000000')
+            ]
+            count: int = 1
+            correct: int = 0
+            for test_case in test_cases:
+                result: TestResult = (await loop.run_in_executor(checker_executor, check_test_case_wrapper, submission_id, count, language, test_case[0], test_case[1]))
+                match result.status:
+                    case 0:
+                        await websocket.send_text(f"Test case #{count}: Correct Answer in {result.time}ms ({result.cpu_time}ms)")
+                        correct += 1
+                    case 1:
+                        await websocket.send_text(f"Test case #{count}: Wrong Answer in {result.time}ms ({result.cpu_time}ms)")
+                    case 6:
+                        await websocket.send_text(f"Test case #{count}: Internal Server Error")
+                    case _:
+                        await websocket.send_text(f"Test case #{count}: Unexpected error")
+                count += 1
+            await websocket.send_text(f"Total result: {correct}/{count - 1}")
+        case 5:
+            await websocket.send_text(f"Error in compilation or file creating occured")
+            await websocket.send_text(f"Description: {create_files_result.description}")
+        case 6:
+            await websocket.send_text(f"Internal Server Error")
+        case _:
+            await websocket.send_text(f"Unexpected Error")
     fs_executor.submit(delete_files_wrapper, submission_id)
     await websocket.close()
 

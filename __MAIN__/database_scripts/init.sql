@@ -144,6 +144,7 @@ CREATE TABLE submission_results (
 );
 
 INSERT INTO languages (name, version, supported) VALUES ('Python 3', '3.10', 1);
+INSERT INTO languages (name, version, supported) VALUES ('Node.js', '20.x', 1);
 INSERT INTO languages (name, version, supported) VALUES ('C++ 17', 'g++ 11.2', 1);
 INSERT INTO languages (name, version, supported) VALUES ('C 17', 'gcc 11.2', 1);
 
