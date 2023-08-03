@@ -80,10 +80,16 @@ def update_user(username: str, user_update: UserRequestUpdate, token: str) -> No
             if user_db is not None:
                 if user_token.id == user_db.id:
                     if user_update.username is not None and user_update.username != '':
-                        cursor.execute(f"UPDATE teams SET name = '{user_update.username}' WHERE owner_user_id = {user_token.id} AND individual = 1")
-                        cursor.execute(f"UPDATE users SET username = '{user_update.username}' WHERE id = {user_token.id}")
+                        if get_user(username=user_update.username) is None:
+                            cursor.execute(f"UPDATE teams SET name = '{user_update.username}' WHERE owner_user_id = {user_token.id} AND individual = 1")
+                            cursor.execute(f"UPDATE users SET username = '{user_update.username}' WHERE id = {user_token.id}")
+                        else:
+                            raise HTTPException(status_code=409, detail="Username is already taken")
                     if user_update.email is not None and user_update.email != '':
-                        cursor.execute(f"UPDATE users SET email = '{user_update.email}' WHERE id = {user_token.id}")
+                        if get_user(email=user_update.email) is None:
+                            cursor.execute(f"UPDATE users SET email = '{user_update.email}' WHERE id = {user_token.id}")
+                        else:
+                            raise HTTPException(status_code=409, detail="Email is already taken")
                     if user_update.name is not None and user_update.name != '':
                         cursor.execute(f"UPDATE users SET name = '{user_update.name}' WHERE id = {user_token.id}")
                     if user_update.password is not None and user_update.password != '':
