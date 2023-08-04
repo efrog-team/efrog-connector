@@ -160,9 +160,9 @@ def put_team(team_name: str, team: TeamRequestUpdate, authorization: Annotated[s
     return JSONResponse({})
 
 @app.get("/users/{username}/teams")
-def get_teams(username: str, only_owned: bool = False, only_unowned: bool = False, only_active: bool = False, only_unactive: bool = False) -> JSONResponse:
+def get_teams(username: str, only_owned: bool = False, only_unowned: bool = False, only_active: bool = False, only_unactive: bool = False, only_coached: bool = False, only_contested: bool = False, only_confirmed: bool = False, only_unconfirmed: bool = False, only_canceled: bool = False, only_uncanceled: bool = False) -> JSONResponse:
     res: list[dict[str, str | int]] = []
-    for team in get_teams_by_user_db(username, only_owned, only_unowned, only_active, only_unactive):
+    for team in get_teams_by_user_db(username, only_owned, only_unowned, only_active, only_unactive, only_coached, only_contested, only_confirmed, only_unconfirmed, only_canceled, only_uncanceled):
         user: User | None = get_user_db(id=team.owner_user_id)
         if user is not None:
             res.append({

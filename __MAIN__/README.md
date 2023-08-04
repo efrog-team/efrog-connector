@@ -106,7 +106,7 @@
     * Response body:
         * empty
 
-* ### GET "/users/{username}/teams?only_owned={only_owned}&only_unowned={only_unowned}&only_unactive={only_unactive}&only_active={only_active}" — get all users teams
+* ### GET "/users/{username}/teams?only_owned={only_owned}&only_unowned={only_unowned}&only_unactive={only_unactive}&only_active={only_active}&only_coached={only_coached}&only_contested={only_contested}&only_confirmed={only_confirmed}&only_unconfirmed={only_unconfirmed}&only_canceled={only_canceled}&only_uncanceled={only_uncanceled}" — get all users teams
     * Request headers:
         * empty
     * Request parameters:
@@ -115,6 +115,12 @@
         * only_unowned: boolean?
         * only_active: boolean?
         * only_unactive: boolean?
+        * only_coached: boolean?
+        * only_contested: boolean?
+        * only_confirmed: boolean?
+        * only_unconfirmed: boolean?
+        * only_canceled: boolean?
+        * only_uncanceled: boolean?
     * Request body:
         * empty
     * Response body:

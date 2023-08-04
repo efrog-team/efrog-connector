@@ -133,7 +133,7 @@ def get_team(id: int = -1, name: str = '', individual: int = -1) -> Team | None:
             else:
                 return Team(id=res['id'], name=res['name'], owner_user_id=res['owner_user_id'], active=res['active'], individual=res['individual'])
 
-def get_teams_by_user(username: str, only_owned: bool, obly_unowned: bool, only_active: bool, only_unactive: bool) -> list[Team]:
+def get_teams_by_user(username: str, only_owned: bool, only_unowned: bool, only_active: bool, only_unactive: bool, only_coached: bool, only_contested: bool, only_confirmed: bool, only_unconfirmed: bool, only_canceled: bool, only_uncanceled: bool) -> list[Team]:
     connection: MySQLConnectionAbstract
     with MySQLConnection(**database_config) as connection:
         connection.autocommit = True
@@ -141,7 +141,28 @@ def get_teams_by_user(username: str, only_owned: bool, obly_unowned: bool, only_
         with connection.cursor(dictionary=True) as cursor:
             user: User | None = get_user(username=username)
             if user is not None:
-                cursor.execute(f"SELECT teams.id, teams.name, teams.owner_user_id, teams.active, teams.individual FROM teams INNER JOIN team_members ON teams.id = team_members.team_id WHERE team_members.member_user_id = {user.id} AND teams.individual = 0{f' AND teams.owner_user_id = {user.id}' if only_owned else ''}{f' AND teams.owner_user_id <> {user.id}' if only_owned else ''}{' AND teams.active = 1' if only_active else ''}{' AND teams.active = 0' if only_unactive else ''}")
+                filter_conditions = ""
+                if only_owned:
+                    filter_conditions += f' AND teams.owner_user_id = {user.id}'
+                if only_unowned:
+                    filter_conditions += f' AND teams.owner_user_id <> {user.id}'
+                if only_active:
+                    filter_conditions += f' AND teams.active = 1'
+                if only_unactive:
+                    filter_conditions += f' AND teams.active = 0'
+                if only_coached:
+                    filter_conditions += f' AND team_members.coach = 1'
+                if only_contested:
+                    filter_conditions += f' AND team_members.coach = 0'
+                if only_confirmed:
+                    filter_conditions += f' AND team_members.confirmed = 1'
+                if only_unconfirmed:
+                    filter_conditions += f' AND team_members.confirmed = 0'
+                if only_canceled:
+                    filter_conditions += f' AND team_members.canceled = 1'
+                if only_uncanceled:
+                    filter_conditions += f' AND team_members.canceled = 0'
+                cursor.execute(f"SELECT teams.id, teams.name, teams.owner_user_id, teams.active, teams.individual FROM teams INNER JOIN team_members ON teams.id = team_members.team_id WHERE team_members.member_user_id = {user.id}{filter_conditions}")
                 res: Any = cursor.fetchall()
                 teams: list[Team] = []
                 for team in res:
@@ -280,7 +301,20 @@ def get_team_members_by_team_id(team_id: int, only_coaches: bool, only_contestan
         connection.autocommit = True
         cursor: MySQLCursorAbstract
         with connection.cursor(dictionary=True) as cursor:
-            cursor.execute(f"SELECT id, member_user_id, team_id, coach, confirmed, canceled FROM team_members WHERE team_id = {team_id}{' AND coach = 1' if only_coaches else ''}{' AND coach = 0' if only_contestants else ''}{' AND confirmed = 1' if only_confirmed else ''}{' AND confirmed = 0' if only_unconfirmed else ''}{' AND canceled = 0' if only_canceled else ''}{' AND canceled = 1' if only_uncanceled else ''}")
+            filter_conditions = ""
+            if only_coaches:
+                filter_conditions += f' AND team_members.coach = 1'
+            if only_contestants:
+                filter_conditions += f' AND team_members.coach = 0'
+            if only_confirmed:
+                filter_conditions += f' AND team_members.confirmed = 1'
+            if only_unconfirmed:
+                filter_conditions += f' AND team_members.confirmed = 0'
+            if only_canceled:
+                filter_conditions += f' AND team_members.canceled = 1'
+            if only_uncanceled:
+                filter_conditions += f' AND team_members.canceled = 0'
+            cursor.execute(f"SELECT id, member_user_id, team_id, coach, confirmed, canceled FROM team_members WHERE team_id = {team_id}{filter_conditions}")
             res: Any = cursor.fetchall()
             team_members: list[TeamMember] = []
             for team_member in res:
