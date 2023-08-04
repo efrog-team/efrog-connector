@@ -42,6 +42,9 @@ class Team(BaseModel):
 class TeamRequest(BaseModel):
     name: str
 
+class TeamRequestUpdate(BaseModel):
+    name: str
+
 class TeamMember(BaseModel):
     id: int
     member_user_id: int

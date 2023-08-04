@@ -6,7 +6,7 @@ from mysql.connector import MySQLConnection
 from mysql.connector.abstracts import MySQLConnectionAbstract, MySQLCursorAbstract
 from config import database_config
 from security.hash import hash_hex
-from models import User, UserRequest, UserRequestUpdate, UserMember, Team, TeamRequest, TeamMember, TeamMemberRequest
+from models import User, UserRequest, UserRequestUpdate, UserMember, Team, TeamRequest, TeamRequestUpdate, TeamMember, TeamMemberRequest
 from typing import Any
 from fastapi import HTTPException
 from security.jwt import decode_token
@@ -65,7 +65,7 @@ def get_and_check_user_by_token(token: str) -> User:
             else:
                 raise HTTPException(status_code=401, detail="Invalid password in the token") 
         else:
-            raise HTTPException(status_code=401, detail="User does not exist")
+            raise HTTPException(status_code=401, detail="Invalid token")
     else:
         raise HTTPException(status_code=401, detail="Invalid token")
 
@@ -149,6 +149,26 @@ def get_teams_by_user(username: str, only_owned: bool, only_active: bool) -> lis
                 return teams
             else:
                 raise HTTPException(status_code=404, detail="User does not exist")
+
+def update_team(team_name: str, team_update: TeamRequestUpdate, token: str) -> None:
+    connection: MySQLConnectionAbstract
+    with MySQLConnection(**database_config) as connection:
+        connection.autocommit = True
+        cursor: MySQLCursorAbstract
+        with connection.cursor(dictionary=True) as cursor:
+            team: Team | None = get_team(name=team_name, individual=0)
+            if team is not None:
+                owner_user_id: int | None = get_and_check_user_by_token(token).id
+                if team.owner_user_id == owner_user_id:
+                    if team_update.name is not None and team_update.name != '':
+                        if get_team(name=team_update.name, individual=0) is None:
+                            cursor.execute(f"UPDATE teams SET name = '{team_update.name}' WHERE id = {team.id}")
+                        else:
+                            raise HTTPException(status_code=409, detail="Team name is already taken")
+                else:
+                    raise HTTPException(status_code=403, detail="You are not the owner of the team")
+            else:
+                raise HTTPException(status_code=404, detail="Team does not exist")
 
 def activate_deactivate_team(team_name: str, token: str, active: int) -> None:
     connection: MySQLConnectionAbstract

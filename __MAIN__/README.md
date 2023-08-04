@@ -96,6 +96,16 @@
         * owner_username: string
         * active: boolean
 
+* ### PUT "/teams/{team_name}" — update a team
+    * Request headers:
+        * Authroization: string (access token)
+    * Request body:
+        * team_name: string
+    * Request parameters:
+        * name: string
+    * Response body:
+        * empty
+
 * ### GET "/users/{username}/teams?only_owned={only_owned}&only_active={only_active}" — get all users teams
     * Request headers:
         * empty
