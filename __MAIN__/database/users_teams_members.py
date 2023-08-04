@@ -141,7 +141,7 @@ def get_teams_by_user(username: str, only_owned: bool, only_active: bool) -> lis
         with connection.cursor(dictionary=True) as cursor:
             user: User | None = get_user(username=username)
             if user is not None:
-                cursor.execute(f"SELECT teams.id, teams.name, teams.owner_user_id, teams.active, teams.individual FROM teams INNER JOIN team_members ON teams.id = team_members.team_id WHERE team_members.member_user_id = users.id AND team.individual = 0{f' AND team.owner_user_id = {user.id}' if only_owned else ''}{' AND team.active = 1' if only_active else ''}")
+                cursor.execute(f"SELECT teams.id, teams.name, teams.owner_user_id, teams.active, teams.individual FROM teams INNER JOIN team_members ON teams.id = team_members.team_id WHERE team_members.member_user_id = {user.id} AND teams.individual = 0{f' AND teams.owner_user_id = {user.id}' if only_owned else ''}{' AND teams.active = 1' if only_active else ''}")
                 res: Any = cursor.fetchall()
                 teams: list[Team] = []
                 for team in res:
