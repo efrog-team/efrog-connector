@@ -84,6 +84,18 @@
     * Response body:
         * empty
 
+* ### GET "/teams/{team_name}" — get a team
+    * Request headers:
+        * empty
+    * Request body:
+        * empty
+    * Request parameters:
+        * team_name: string
+    * Response body:
+        * name: string
+        * owner_username: string
+        * active: boolean
+
 * ### GET "/users/{username}/teams?only_owned={only_owned}&only_active={only_active}" — get all users teams
     * Request headers:
         * empty

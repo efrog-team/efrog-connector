@@ -2,14 +2,14 @@ from fastapi import FastAPI, HTTPException, Header, WebSocket
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from database.users_teams_members import create_user as create_user_db, get_user as get_user_db, get_and_check_user_by_token as get_user_by_token_db, update_user as update_user_db
-from database.users_teams_members import create_team as create_team_db, get_teams_by_user as get_teams_by_user_db, activate_deactivate_team as activate_deactivate_team_db, check_if_team_can_be_deleted as check_if_team_can_be_deleted_db, delete_team as delete_team_db
+from database.users_teams_members import create_team as create_team_db, get_team as get_team_db, get_teams_by_user as get_teams_by_user_db, activate_deactivate_team as activate_deactivate_team_db, check_if_team_can_be_deleted as check_if_team_can_be_deleted_db, delete_team as delete_team_db
 from database.users_teams_members import create_team_memeber as create_team_memeber_db, get_team_members_by_team_name as get_team_members_db, confirm_team_member as confirm_team_member_db
 from database.problems import create_problem as create_problem_db, get_problem as get_problem_db, get_problems_by_author as get_problems_by_author_db, make_problem_public_private as make_problem_public_private_db, check_if_problem_can_be_edited as check_if_problem_can_be_edited_db, update_problem as update_problem_db, delete_problem as delete_problem_db
 from database.test_cases import create_test_case as create_test_case_db, get_test_case as get_test_case_db, get_test_cases as get_test_cases_db, make_test_case_opened_closed as make_test_case_opened_closed_db, update_test_case as update_test_case_db, delete_test_case as delete_test_case_db
 from database.submissions_results import create_submission as create_submission_db, mark_submission_as_checked as mark_submission_as_checked_db, create_submission_result as create_submission_result_db, get_submission_with_results as get_submission_with_results_db, get_submissions_public_by_user as get_submissions_public_by_user, get_submission_public as get_submission_public_db
 from database.languages import get_language_by_id as get_language_by_id_db
 from database.verdicts import get_verdict as get_verdict_db
-from models import User, UserRequest, UserToken, UserRequestUpdate, TeamRequest, TeamMemberRequest, Problem, ProblemRequest, ProblemRequestUpdate, TestCase, TestCaseRequest, TestCaseRequestUpdate, SubmissionPublic, SubmissionRequest, SubmissionResult, SubmissionWithResults, Language, Verdict
+from models import User, UserRequest, UserToken, UserRequestUpdate, Team, TeamRequest, TeamMemberRequest, Problem, ProblemRequest, ProblemRequestUpdate, TestCase, TestCaseRequest, TestCaseRequestUpdate, SubmissionPublic, SubmissionRequest, SubmissionResult, SubmissionWithResults, Language, Verdict
 from security.hash import hash_hex
 from security.jwt import encode_token
 from typing import Annotated
@@ -134,6 +134,22 @@ def post_team(team: TeamRequest, authorization: Annotated[str | None, Header()])
     else:
         raise HTTPException(status_code=401, detail="Invalid token")
     return JSONResponse({})
+
+@app.get("/teams/{team_name}")
+def get_team(team_name: str) -> JSONResponse:
+    team_db: Team | None = get_team_db(name=team_name, individual=0)
+    if team_db is not None:
+        owner_db: User | None = get_user_db(id=team_db.owner_user_id)
+        if owner_db is not None:
+            return JSONResponse({
+                'name': team_db.name,
+                'owner_username': owner_db.username,
+                'active': bool(team_db.active)
+            })
+        else:
+            raise HTTPException(status_code=404, detail="Owner does not exist")
+    else:
+        raise HTTPException(status_code=404, detail="Team does not exist")
 
 @app.get("/users/{username}/teams")
 def get_teams(username: str, only_owned: bool, only_active: bool) -> JSONResponse:
