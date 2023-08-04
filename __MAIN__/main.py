@@ -3,13 +3,13 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from database.users_teams_members import create_user as create_user_db, get_user as get_user_db, get_and_check_user_by_token as get_user_by_token_db, update_user as update_user_db
 from database.users_teams_members import create_team as create_team_db, get_team as get_team_db, get_teams_by_user as get_teams_by_user_db, update_team as update_team_db, activate_deactivate_team as activate_deactivate_team_db, check_if_team_can_be_deleted as check_if_team_can_be_deleted_db, delete_team as delete_team_db
-from database.users_teams_members import create_team_memeber as create_team_memeber_db, get_team_members_by_team_name as get_team_members_db, confirm_team_member as confirm_team_member_db
+from database.users_teams_members import create_team_member as create_team_member_db, get_team_member_by_names as get_team_member_by_names_db, get_team_members_by_team_name as get_team_members_db, make_coach_contestant as make_coach_contestant_db, confirm_team_member as confirm_team_member_db, cancel_team_member as cancel_team_member_db, delete_team_member as delete_team_member_db
 from database.problems import create_problem as create_problem_db, get_problem as get_problem_db, get_problems_by_author as get_problems_by_author_db, make_problem_public_private as make_problem_public_private_db, check_if_problem_can_be_edited as check_if_problem_can_be_edited_db, update_problem as update_problem_db, delete_problem as delete_problem_db
 from database.test_cases import create_test_case as create_test_case_db, get_test_case as get_test_case_db, get_test_cases as get_test_cases_db, make_test_case_opened_closed as make_test_case_opened_closed_db, update_test_case as update_test_case_db, delete_test_case as delete_test_case_db
 from database.submissions_results import create_submission as create_submission_db, mark_submission_as_checked as mark_submission_as_checked_db, create_submission_result as create_submission_result_db, get_submission_with_results as get_submission_with_results_db, get_submissions_public_by_user as get_submissions_public_by_user, get_submission_public as get_submission_public_db
 from database.languages import get_language_by_id as get_language_by_id_db
 from database.verdicts import get_verdict as get_verdict_db
-from models import User, UserRequest, UserToken, UserRequestUpdate, Team, TeamRequest, TeamRequestUpdate, TeamMemberRequest, Problem, ProblemRequest, ProblemRequestUpdate, TestCase, TestCaseRequest, TestCaseRequestUpdate, SubmissionPublic, SubmissionRequest, SubmissionResult, SubmissionWithResults, Language, Verdict
+from models import User, UserRequest, UserToken, UserRequestUpdate, Team, TeamRequest, TeamRequestUpdate, TeamMember, TeamMemberRequest, Problem, ProblemRequest, ProblemRequestUpdate, TestCase, TestCaseRequest, TestCaseRequestUpdate, SubmissionPublic, SubmissionRequest, SubmissionResult, SubmissionWithResults, Language, Verdict
 from security.hash import hash_hex
 from security.jwt import encode_token
 from typing import Annotated
@@ -160,9 +160,9 @@ def put_team(team_name: str, team: TeamRequestUpdate, authorization: Annotated[s
     return JSONResponse({})
 
 @app.get("/users/{username}/teams")
-def get_teams(username: str, only_owned: bool, only_active: bool) -> JSONResponse:
+def get_teams(username: str, only_owned: bool = False, only_unowned: bool = False, only_active: bool = False, only_unactive: bool = False) -> JSONResponse:
     res: list[dict[str, str | int]] = []
-    for team in get_teams_by_user_db(username, only_owned, only_active):
+    for team in get_teams_by_user_db(username, only_owned, only_unowned, only_active, only_unactive):
         user: User | None = get_user_db(id=team.owner_user_id)
         if user is not None:
             res.append({
@@ -207,29 +207,80 @@ def delete_team(team_name: str, authorization: Annotated[str | None, Header()]) 
 @app.post("/teams/{team_name}/members")
 def post_team_member(team_member: TeamMemberRequest, team_name: str, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     if authorization is not None:
-        create_team_memeber_db(team_member, team_name, authorization)
+        create_team_member_db(team_member, team_name, authorization)
     else:
         raise HTTPException(status_code=401, detail="Invalid token")
     return JSONResponse({})
 
 @app.get("/teams/{team_name}/members")
-def get_team_members(team_name: str, only_confirmed: bool) -> JSONResponse:
+def get_team_members(team_name: str, only_coaches: bool = False, only_contestants: bool = False, only_confirmed: bool = False, only_unconfirmed: bool = False, only_canceled: bool = False, only_uncanceled: bool = False) -> JSONResponse:
     res: list[dict[str, str | int]] = []
-    for team_member in get_team_members_db(team_name, only_confirmed):
-        res.append({
-            'username': team_member.username,
-            'email': team_member.email,
-            'name': team_member.name,
-            'confirmed': bool(team_member.confirmed)
-        })
+    for team_member in get_team_members_db(team_name, only_coaches, only_contestants, only_confirmed, only_unconfirmed, only_canceled, only_uncanceled):
+        member_db: User | None = get_user_db(id=team_member.member_user_id)
+        if member_db is not None:
+            res.append({
+                'member_username': member_db.username,
+                'team_name': team_name,
+                'coach': bool(team_member.coach),
+                'confirmed': bool(team_member.confirmed),
+                'canceled': bool(team_member.canceled)
+            })
+        else:
+            raise HTTPException(status_code=404, detail="Team member does not exist")
     return JSONResponse({
         'team_members': res
     })
 
-@app.put("/teams/{team_name}/members/{team_member_username}/confirm")
-def put_confirm_team_member(team_name: str, team_member_username: str, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+@app.get("/teams/{team_name}/members/{member_username}")
+def get_team_member(team_name: str, member_username: str) -> JSONResponse:
+    team_member_db: TeamMember | None = get_team_member_by_names_db(member_username, team_name)
+    if team_member_db is not None:
+        return JSONResponse({
+            'member_username': member_username, 
+            'team_name': team_name,
+            'coach': bool(team_member_db.coach),
+            'confirmed': bool(team_member_db.confirmed),
+            'canceled': bool(team_member_db.canceled)
+        })
+    else:
+        raise HTTPException(status_code=404, detail="Team member does not exist")
+
+@app.put("/teams/{team_name}/members/{member_username}/make-coach")
+def put_make_team_member_coach(team_name: str, member_username: str, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     if authorization is not None:
-        confirm_team_member_db(team_name, team_member_username, authorization)
+        make_coach_contestant_db(team_name, member_username, authorization, 1)
+    else:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return JSONResponse({})
+
+@app.put("/teams/{team_name}/members/{member_username}/make-contestant")
+def put_make_team_member_contestant(team_name: str, member_username: str, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+    if authorization is not None:
+        make_coach_contestant_db(team_name, member_username, authorization, 0)
+    else:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return JSONResponse({})
+
+@app.put("/teams/{team_name}/members/{member_username}/confirm")
+def put_confirm_team_member(team_name: str, member_username: str, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+    if authorization is not None:
+        confirm_team_member_db(team_name, member_username, authorization)
+    else:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return JSONResponse({})
+
+@app.put("/teams/{team_name}/members/{member_username}/cancel")
+def put_cancel_team_member(team_name: str, member_username: str, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+    if authorization is not None:
+        cancel_team_member_db(team_name, member_username, authorization)
+    else:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return JSONResponse({})
+
+@app.delete("/teams/{team_name}/members/{member_username}")
+def delete_team_member(team_name: str, member_username: str, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+    if authorization is not None:
+        delete_team_member_db(team_name, member_username, authorization)
     else:
         raise HTTPException(status_code=401, detail="Invalid token")
     return JSONResponse({})
@@ -267,10 +318,10 @@ def get_problem(problem_id: int, authorization: Annotated[str | None, Header()])
             raise HTTPException(status_code=404, detail="Author of the problem does not exist")
 
 @app.get('/users/{username}/problems')
-def get_problems(username: str, only_public: bool, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+def get_problems(username: str, authorization: Annotated[str | None, Header()], only_public: bool = False, only_private: bool = False) -> JSONResponse:
     res: list[dict[str, str | int]] = []
     if authorization is not None:
-        for problem in get_problems_by_author_db(username, only_public, authorization):
+        for problem in get_problems_by_author_db(username, only_public, only_private, authorization):
             author: User | None = get_user_db(id=problem.author_user_id)
             if author is not None:
                 res.append({
@@ -360,10 +411,10 @@ def get_test_case(problem_id: int, test_case_id: int, authorization: Annotated[s
         })
 
 @app.get("/problems/{problem_id}/test-cases")
-def get_test_cases(problem_id: int, only_opened: bool, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+def get_test_cases(problem_id: int, authorization: Annotated[str | None, Header()], only_opened: bool = False, only_closed: bool = False) -> JSONResponse:
     test_cases: list[dict[str, str | int | None]] = []
     if authorization is not None:
-        for test_case in get_test_cases_db(problem_id, only_opened, authorization):
+        for test_case in get_test_cases_db(problem_id, only_opened, only_closed, authorization):
             test_cases.append({
                 'id': test_case.id,
                 'problem_id': test_case.problem_id,
@@ -420,7 +471,7 @@ def check_problem(submission_id: int, problem_id: int, token: str, code: str, la
             run(current_websockets[submission_id].send_message(f"Saved succesfully"))
             if language == 'C++ 17 (g++ 11.2)' or language == 'C 17 (gcc 11.2)':
                 run(current_websockets[submission_id].send_message(f"Compiled succesfully"))
-            test_cases: list[TestCase] = get_test_cases_db(problem_id, False, token)
+            test_cases: list[TestCase] = get_test_cases_db(problem_id, False, False, token)
             correct_score: int = 0
             total_score: int = 0
             for index, test_case in enumerate(test_cases):
@@ -450,12 +501,12 @@ def check_problem(submission_id: int, problem_id: int, token: str, code: str, la
                 create_submission_result_db(SubmissionResult(id=-1, submission_id=submission_id, test_case_id=test_case.id, verdict_id=result.status+1, verdict_details='', time_taken=result.time, cpu_time_taken=result.cpu_time, memory_taken=result.memory))
             run(current_websockets[submission_id].send_message(f"Total result: {correct_score}/{total_score}"))
         case 5:
-            test_cases: list[TestCase] = get_test_cases_db(problem_id, False, token)
+            test_cases: list[TestCase] = get_test_cases_db(problem_id, False, False, token)
             for test_case in test_cases:
                 create_submission_result_db(SubmissionResult(id=-1, submission_id=submission_id, test_case_id=test_case.id, verdict_id=6, verdict_details='', time_taken=0, cpu_time_taken=0, memory_taken=0))
             run(current_websockets[submission_id].send_message(f"Error in compilation or file creation occured"))
         case 6:
-            test_cases: list[TestCase] = get_test_cases_db(problem_id, False, token)
+            test_cases: list[TestCase] = get_test_cases_db(problem_id, False, False, token)
             for test_case in test_cases:
                 create_submission_result_db(SubmissionResult(id=-1, submission_id=submission_id, test_case_id=test_case.id, verdict_id=7, verdict_details='', time_taken=0, cpu_time_taken=0, memory_taken=0))
             run(current_websockets[submission_id].send_message(f"Internal Server Error"))

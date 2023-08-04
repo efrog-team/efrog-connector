@@ -45,7 +45,7 @@ def get_problem(id: int, token: str = '') -> Problem | None:
                 else:
                     raise HTTPException(status_code=500, detail="Internal Server Error")
 
-def get_problems_by_author(username: str, only_public: bool, token: str = '') -> list[Problem]:
+def get_problems_by_author(username: str, only_public: bool, only_private: bool, token: str = '') -> list[Problem]:
     connection: MySQLConnectionAbstract
     with MySQLConnection(**database_config) as connection:
         connection.autocommit = True
@@ -54,7 +54,7 @@ def get_problems_by_author(username: str, only_public: bool, token: str = '') ->
             user: User | None = get_user(username=username)
             if user is not None:
                 if (not only_public and token != '' and get_and_check_user_by_token(token).id == user.id) or only_public: 
-                    cursor.execute(f"SELECT problems.id, problems.author_user_id, problems.name, problems.statement, problems.input_statement, problems.output_statement, problems.notes, problems.time_restriction, problems.memory_restriction WHERE problems.author_user_id = {user.id}{' AND problems.private = 0' if only_public else ''}")
+                    cursor.execute(f"SELECT problems.id, problems.author_user_id, problems.name, problems.statement, problems.input_statement, problems.output_statement, problems.notes, problems.time_restriction, problems.memory_restriction WHERE problems.author_user_id = {user.id}{' AND problems.private = 0' if only_public else ''}{' AND problems.private = 1' if only_private else ''}")
                     res: Any = cursor.fetchall()
                     problems: list[Problem] = []
                     for problem in res:

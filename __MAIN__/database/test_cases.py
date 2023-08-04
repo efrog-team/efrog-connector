@@ -78,7 +78,7 @@ def get_test_case(id: int, problem_id: int, token: str = '') -> TestCase | None:
             else:
                 raise HTTPException(status_code=404, detail="Problem does not exist")
 
-def get_test_cases(problem_id: int, only_opened: bool, token: str = '') -> list[TestCase]:
+def get_test_cases(problem_id: int, only_opened: bool, only_closed: bool, token: str = '') -> list[TestCase]:
     connection: MySQLConnectionAbstract
     with MySQLConnection(**database_config) as connection:
         connection.autocommit = True
@@ -87,7 +87,7 @@ def get_test_cases(problem_id: int, only_opened: bool, token: str = '') -> list[
             problem: Problem | None = get_problem(problem_id, token)
             if problem is not None:
                 if (problem.private == 1 and token != '' and problem.author_user_id == get_and_check_user_by_token(token).id) or (problem.private == 0 and not only_opened and token != '' and problem.author_user_id == get_and_check_user_by_token(token).id) or (problem.private == 0 and only_opened):
-                    cursor.execute(f"SELECT id, problem_id, input, solution, score, opened FROM test_cases WHERE problem_id = {problem_id}{' AND opened = 1' if only_opened else ''}")
+                    cursor.execute(f"SELECT id, problem_id, input, solution, score, opened FROM test_cases WHERE problem_id = {problem_id}{' AND opened = 1' if only_opened else ''}{' AND opened = 0' if only_closed else ''}")
                     res: Any = cursor.fetchall()
                     test_cases: list[TestCase] = []
                     for test_case in res:

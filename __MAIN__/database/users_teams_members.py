@@ -6,7 +6,7 @@ from mysql.connector import MySQLConnection
 from mysql.connector.abstracts import MySQLConnectionAbstract, MySQLCursorAbstract
 from config import database_config
 from security.hash import hash_hex
-from models import User, UserRequest, UserRequestUpdate, UserMember, Team, TeamRequest, TeamRequestUpdate, TeamMember, TeamMemberRequest
+from models import User, UserRequest, UserRequestUpdate, Team, TeamRequest, TeamRequestUpdate, TeamMember, TeamMemberRequest
 from typing import Any
 from fastapi import HTTPException
 from security.jwt import decode_token
@@ -114,7 +114,7 @@ def create_team(team: Team | TeamRequest, token: str = '') -> None:
                 cursor.execute(f"INSERT INTO teams (name, owner_user_id, active, individual) VALUES ('{team.name}', {owner_user_id}, {active}, {individual})")
                 res_team_id: int | None = cursor.lastrowid
                 if res_team_id is not None:
-                    create_team_memeber(TeamMember(id=-1, member_user_id=owner_user_id, team_id=res_team_id, confirmed=1))
+                    create_team_member(TeamMember(id=-1, member_user_id=owner_user_id, team_id=res_team_id, coach=0, confirmed=1, canceled=0))
                 else:
                     raise HTTPException(status_code=500, detail="Internal Server Error")
             else:
@@ -133,7 +133,7 @@ def get_team(id: int = -1, name: str = '', individual: int = -1) -> Team | None:
             else:
                 return Team(id=res['id'], name=res['name'], owner_user_id=res['owner_user_id'], active=res['active'], individual=res['individual'])
 
-def get_teams_by_user(username: str, only_owned: bool, only_active: bool) -> list[Team]:
+def get_teams_by_user(username: str, only_owned: bool, obly_unowned: bool, only_active: bool, only_unactive: bool) -> list[Team]:
     connection: MySQLConnectionAbstract
     with MySQLConnection(**database_config) as connection:
         connection.autocommit = True
@@ -141,7 +141,7 @@ def get_teams_by_user(username: str, only_owned: bool, only_active: bool) -> lis
         with connection.cursor(dictionary=True) as cursor:
             user: User | None = get_user(username=username)
             if user is not None:
-                cursor.execute(f"SELECT teams.id, teams.name, teams.owner_user_id, teams.active, teams.individual FROM teams INNER JOIN team_members ON teams.id = team_members.team_id WHERE team_members.member_user_id = {user.id} AND teams.individual = 0{f' AND teams.owner_user_id = {user.id}' if only_owned else ''}{' AND teams.active = 1' if only_active else ''}")
+                cursor.execute(f"SELECT teams.id, teams.name, teams.owner_user_id, teams.active, teams.individual FROM teams INNER JOIN team_members ON teams.id = team_members.team_id WHERE team_members.member_user_id = {user.id} AND teams.individual = 0{f' AND teams.owner_user_id = {user.id}' if only_owned else ''}{f' AND teams.owner_user_id <> {user.id}' if only_owned else ''}{' AND teams.active = 1' if only_active else ''}{' AND teams.active = 0' if only_unactive else ''}")
                 res: Any = cursor.fetchall()
                 teams: list[Team] = []
                 for team in res:
@@ -221,26 +221,26 @@ def delete_team(team_name: str, token: str) -> None:
 
 # Team Members ------------------------------------------------------------------------------------------------------------------------------------------
 
-def create_team_memeber(team_memeber: TeamMember | TeamMemberRequest, team_name: str = '', token: str = '') -> None:
+def create_team_member(team_member: TeamMember | TeamMemberRequest, team_name: str = '', token: str = '') -> None:
     connection: MySQLConnectionAbstract
     with MySQLConnection(**database_config) as connection:
         connection.autocommit = True
         cursor: MySQLCursorAbstract
         with connection.cursor(dictionary=True) as cursor:
-            if isinstance(team_memeber, TeamMember):
-                if get_team_member_by_ids(team_member_id=team_memeber.member_user_id, team_id=team_memeber.team_id) is None:
-                    cursor.execute(f"INSERT INTO team_members (member_user_id, team_id, confirmed) VALUES ({team_memeber.member_user_id}, {team_memeber.team_id}, {team_memeber.confirmed})")
+            if isinstance(team_member, TeamMember):
+                if get_team_member_by_ids(team_member_id=team_member.member_user_id, team_id=team_member.team_id) is None:
+                    cursor.execute(f"INSERT INTO team_members (member_user_id, team_id, coach, confirmed, canceled) VALUES ({team_member.member_user_id}, {team_member.team_id}, {team_member.coach}, {team_member.confirmed}, {team_member.canceled})")
                 else:
                     raise HTTPException(status_code=409, detail="Member already exists")
             else:
-                team_member: User | None = get_user(username=team_memeber.member_username)
-                if team_member is not None:
+                team_member_user: User | None = get_user(username=team_member.member_username)
+                if team_member_user is not None:
                     team: Team | None = get_team(name=team_name, individual=0)
                     if team is not None:
                         owner_user_id: int | None = get_and_check_user_by_token(token).id
                         if team.owner_user_id == owner_user_id:
-                            if get_team_member_by_ids(team_member_id=team_member.id, team_id=team.id) is None:
-                                cursor.execute(f"INSERT INTO team_members (member_user_id, team_id, confirmed) VALUES ({team_member.id}, {team.id}, {0})")
+                            if get_team_member_by_ids(team_member_id=team_member_user.id, team_id=team.id) is None:
+                                cursor.execute(f"INSERT INTO team_members (member_user_id, team_id, coach, confirmed, canceled) VALUES ({team_member_user.id}, {team.id}, 0, 0, 0)")
                             else:
                                 raise HTTPException(status_code=409, detail="Member already exists")
                         else:
@@ -256,48 +256,45 @@ def get_team_member_by_ids(id: int = -1, team_member_id: int = -1, team_id: int 
         connection.autocommit = True
         cursor: MySQLCursorAbstract
         with connection.cursor(dictionary=True) as cursor:
-            cursor.execute(f"SELECT id, member_user_id, team_id, confirmed FROM team_members WHERE id = {id} OR (member_user_id = {team_member_id} AND team_id = {team_id})")
+            cursor.execute(f"SELECT id, member_user_id, team_id, coach, confirmed, canceled FROM team_members WHERE id = {id} OR (member_user_id = {team_member_id} AND team_id = {team_id})")
             res: Any = cursor.fetchone()
             if res is None:
                 return None
             else:
-                return TeamMember(id=res['id'], member_user_id=res['member_user_id'], team_id=res['team_id'], confirmed=res['confirmed'])
+                return TeamMember(id=res['id'], member_user_id=res['member_user_id'], team_id=res['team_id'], coach=res['coach'], confirmed=res['confirmed'], canceled=res['canceled'])
 
-def get_team_member_by_names(team_member_username: str = '', team_name: str = '') -> TeamMember | None:
+def get_team_member_by_names(team_member_username: str, team_name: str) -> TeamMember | None:
+    team_member: User | None = get_user(username=team_member_username)
+    if team_member is not None:
+        team: Team | None = get_team(name=team_name, individual=0)
+        if team is not None:
+            return get_team_member_by_ids(team_member_id=team_member.id, team_id=team.id)
+        else:
+            raise HTTPException(status_code=404, detail="Team does not exist")
+    else:
+        raise HTTPException(status_code=404, detail="User does not exist")
+
+def get_team_members_by_team_id(team_id: int, only_coaches: bool, only_contestants: bool, only_confirmed: bool, only_unconfirmed: bool, only_canceled: bool, only_uncanceled: bool) -> list[TeamMember]:
     connection: MySQLConnectionAbstract
     with MySQLConnection(**database_config) as connection:
         connection.autocommit = True
         cursor: MySQLCursorAbstract
         with connection.cursor(dictionary=True) as cursor:
-            team_member: User | None = get_user(username=team_member_username)
-            if team_member is not None:
-                team: Team | None = get_team(name=team_name, individual=0)
-                if team is not None:
-                    cursor.execute(f"SELECT id, member_user_id, team_id, confirmed FROM team_members WHERE (member_user_id = {team_member.id} AND team_id = {team.id})")
-                    res: Any = cursor.fetchone()
-                    if res is None:
-                        return None
-                    else:
-                        return TeamMember(id=res['id'], member_user_id=res['member_user_id'], team_id=res['team_id'], confirmed=res['confirmed'])
-                else:
-                    raise HTTPException(status_code=404, detail="Team does not exist")
-            else:
-                raise HTTPException(status_code=404, detail="User does not exist")
-
-def get_team_members_by_team_id(team_id: int, only_confirmed: bool) -> list[User]:
-    connection: MySQLConnectionAbstract
-    with MySQLConnection(**database_config) as connection:
-        connection.autocommit = True
-        cursor: MySQLCursorAbstract
-        with connection.cursor(dictionary=True) as cursor:
-            cursor.execute(f"SELECT users.id, users.username, users.email, users.name, users.password FROM users JOIN team_members ON users.id = team_members.member_user_id WHERE team_id = {team_id}{' AND confirmed = 1' if only_confirmed else ''}")
+            cursor.execute(f"SELECT id, member_user_id, team_id, coach, confirmed, canceled FROM team_members WHERE team_id = {team_id}{' AND coach = 1' if only_coaches else ''}{' AND coach = 0' if only_contestants else ''}{' AND confirmed = 1' if only_confirmed else ''}{' AND confirmed = 0' if only_unconfirmed else ''}{' AND canceled = 0' if only_canceled else ''}{' AND canceled = 1' if only_uncanceled else ''}")
             res: Any = cursor.fetchall()
-            team_members: list[User] = []
+            team_members: list[TeamMember] = []
             for team_member in res:
-                team_members.append(User(id=team_member['id'], username=team_member['username'], email=team_member['email'], name=team_member['name'], password=team_member['password']))
+                team_members.append(TeamMember(id=team_member['id'], member_user_id=team_member['member_user_id'], team_id=team_member['team_id'], coach=team_member['coach'], confirmed=team_member['confirmed'], canceled=team_member['canceled']))
             return team_members
 
-def get_team_members_by_team_name(team_name: str, only_confirmed: bool) -> list[UserMember]:
+def get_team_members_by_team_name(team_name: str, only_coaches: bool, only_contestants: bool, only_confirmed: bool, only_unconfirmed: bool, only_canceled: bool, only_uncanceled: bool) -> list[TeamMember]:
+    team: Team | None = get_team(name=team_name, individual=0)
+    if team is not None:
+        return get_team_members_by_team_id(team.id, only_coaches, only_contestants, only_confirmed, only_unconfirmed, only_canceled, only_uncanceled)
+    else:
+        raise HTTPException(status_code=404, detail="Team does not exist")
+
+def make_coach_contestant(team_name: str, team_member_username: str, token: str, coach: int) -> None:
     connection: MySQLConnectionAbstract
     with MySQLConnection(**database_config) as connection:
         connection.autocommit = True
@@ -305,12 +302,14 @@ def get_team_members_by_team_name(team_name: str, only_confirmed: bool) -> list[
         with connection.cursor(dictionary=True) as cursor:
             team: Team | None = get_team(name=team_name, individual=0)
             if team is not None:
-                cursor.execute(f"SELECT users.id, users.username, users.email, users.name, users.password, team_members.confirmed FROM users JOIN team_members ON users.id = team_members.member_user_id WHERE team_id = {team.id}{' AND confirmed = 1' if only_confirmed else ''}")
-                res: Any = cursor.fetchall()
-                team_members: list[UserMember] = []
-                for team_member in res:
-                    team_members.append(UserMember(id=team_member['id'], username=team_member['username'], email=team_member['email'], name=team_member['name'], password=team_member['password'], confirmed=team_member['confirmed']))
-                return team_members
+                if team.owner_user_id == get_and_check_user_by_token(token).id:
+                    team_member: TeamMember | None = get_team_member_by_names(team_member_username=team_member_username, team_name=team_name)
+                    if team_member is not None:
+                        cursor.execute(f"UPDATE team_members SET coach = {coach} WHERE id = {team_member.id}")
+                    else:
+                        raise HTTPException(status_code=404, detail="Team member does not exist")
+                else:
+                    raise HTTPException(status_code=403, detail="You are not the owner of the team")
             else:
                 raise HTTPException(status_code=404, detail="Team does not exist")
 
@@ -329,3 +328,38 @@ def confirm_team_member(team_name: str, team_member_username: str, token: str) -
                     raise HTTPException(status_code=404, detail="Member does not exist")
             else:
                 raise HTTPException(status_code=403, detail="You are trying to confirm someone but not yourself")
+
+def cancel_team_member(team_name: str, team_member_username: str, token: str) -> None:
+    connection: MySQLConnectionAbstract
+    with MySQLConnection(**database_config) as connection:
+        connection.autocommit = True
+        cursor: MySQLCursorAbstract
+        with connection.cursor(dictionary=True) as cursor:
+            team_member: User = get_and_check_user_by_token(token)
+            if team_member.username == team_member_username:
+                team_member_db: TeamMember | None = get_team_member_by_names(team_member_username=team_member_username, team_name=team_name)
+                if team_member_db is not None:
+                    cursor.execute(f"UPDATE team_members SET canceled = 1 WHERE id = {team_member_db.id}")
+                else:
+                    raise HTTPException(status_code=404, detail="Member does not exist")
+            else:
+                raise HTTPException(status_code=403, detail="You are trying to cancel someone but not yourself")
+
+def delete_team_member(team_name: str, team_member_username: str, token: str) -> None:
+    connection: MySQLConnectionAbstract
+    with MySQLConnection(**database_config) as connection:
+        connection.autocommit = True
+        cursor: MySQLCursorAbstract
+        with connection.cursor(dictionary=True) as cursor:
+            team: Team | None = get_team(name=team_name, individual=0)
+            if team is not None:
+                if team.owner_user_id == get_and_check_user_by_token(token).id:
+                    team_member: TeamMember | None = get_team_member_by_names(team_member_username=team_member_username, team_name=team_name)
+                    if team_member is not None:
+                        cursor.execute(f"DELETE FROM team_members WHERE id = {team_member.id}")
+                    else:
+                        raise HTTPException(status_code=404, detail="Team member does not exist")
+                else:
+                    raise HTTPException(status_code=403, detail="You are not the owner of the team")
+            else:
+                raise HTTPException(status_code=404, detail="Team does not exist")

@@ -106,13 +106,15 @@
     * Response body:
         * empty
 
-* ### GET "/users/{username}/teams?only_owned={only_owned}&only_active={only_active}" — get all users teams
+* ### GET "/users/{username}/teams?only_owned={only_owned}&only_unowned={only_unowned}&only_unactive={only_unactive}&only_active={only_active}" — get all users teams
     * Request headers:
         * empty
     * Request parameters:
         * username: string
-        * only_owned: boolean
-        * only_active: boolean
+        * only_owned: boolean?
+        * only_unowned: boolean?
+        * only_active: boolean?
+        * only_unactive: boolean?
     * Request body:
         * empty
     * Response body:
@@ -162,7 +164,7 @@
     * Response body:
         * empty
 
-* ### POST "/teams/{team_name}/members" — create a team memeber
+* ### POST "/teams/{team_name}/members" — create a team member
     * Request headers:
         * Authroization: string (access token)
     * Request parameters:
@@ -172,12 +174,17 @@
     * Response body:
         * empty
 
-* ### GET "/teams/{team_name}/members?only_comfirmed={only_comfirmed}" — get a team memebers
+* ### GET "/teams/{team_name}/members?only_coaches={only_coaches}&only_contestants={only_contestants}&only_confirmed={only_confirmed}&only_unconfirmed={only_unconfirmed}&only_canceled={only_canceled}&only_uncanceled={only_uncanceled}" — get a team members
     * Request headers:
         * empty
     * Request parameters:
         * team_name: string
-        * only_comfirmed: boolean
+        * only_coaches: boolean?
+        * only_contestants: boolean?
+        * only_confirmed: boolean?
+        * only_unconfirmed: boolean?
+        * only_canceled: boolean?
+        * only_uncanceled: boolean?
     * Request body:
         * empty
     * Response body:
@@ -188,12 +195,71 @@
             * confirmed: boolean
         } ]
 
-* ### PUT "/teams/{team_name}/members/{team_member_username}/confirm" — confirm a team member
+* ### GET "/teams/{team_name}/members/{member_username}" — get a team member
+    * Request headers:
+        * empty
+    * Request parameters:
+        * team_name: string
+        * member_username: string
+    * Request body:
+        * empty
+    * Response body:
+        * member_username: string
+        * team_name: string
+        * coach: boolean
+        * confirmed: boolean
+        * canceled: boolean
+
+* ### PUT "/teams/{team_name}/members/{member_username}/make-coach" — make a team member coach
     * Request headers:
         * Authroization: string (access token)
     * Request parameters:
         * team_name: string
-        * team_member_username: string
+        * member_username: string
+    * Request body:
+        * empty
+    * Response body:
+        * empty
+
+* ### PUT "/teams/{team_name}/members/{member_username}/make-contestant" — make a team member contestant
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * team_name: string
+        * member_username: string
+    * Request body:
+        * empty
+    * Response body:
+        * empty
+
+* ### PUT "/teams/{team_name}/members/{member_username}/confirm" — confirm a team member
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * team_name: string
+        * member_username: string
+    * Request body:
+        * empty
+    * Response body:
+        * empty
+
+* ### PUT "/teams/{team_name}/members/{member_username}/cancel" — cancel a team member
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * team_name: string
+        * member_username: string
+    * Request body:
+        * empty
+    * Response body:
+        * empty
+
+* ### DELETE "/teams/{team_name}/members/{member_username}" — delete a team member
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * team_name: string
+        * member_username: string
     * Request body:
         * empty
     * Response body:
