@@ -210,6 +210,7 @@ def delete_team(team_name: str, token: str) -> None:
                 if check_if_team_can_be_deleted(team_name):
                     owner_user_id: int | None = get_and_check_user_by_token(token).id
                     if team.owner_user_id == owner_user_id:
+                        cursor.execute(f"DELETE FROM team_members WHERE team_id = {team.id}")
                         cursor.execute(f"DELETE FROM teams WHERE id = {team.id}")
                     else:
                         raise HTTPException(status_code=403, detail="You are not the owner of the team")
