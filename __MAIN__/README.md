@@ -189,10 +189,11 @@
         * empty
     * Response body:
         * team_members: array[ {
-            * username: string
-            * email: string
-            * name: string
+            * member_username: string
+            * team_name: string
+            * coach: boolean
             * confirmed: boolean
+            * canceled: boolean
         } ]
 
 * ### GET "/teams/{team_name}/members/{member_username}" — get a team member
