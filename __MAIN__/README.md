@@ -511,22 +511,53 @@
         * correct_score: integer
         * total_score: integer
         * results: array[ {
-            id: integer
-            submission_id: integer
-            test_case_id: integer
-            test_case_score: integer
-            verdict_text: string
-            verdict_details: string
-            time_taken: integer
-            cpu_time_taken: integer
-            memory_taken: integer
+            * id: integer
+            * submission_id: integer
+            * test_case_id: integer
+            * test_case_score: integer
+            * verdict_text: string
+            * verdict_details: string
+            * time_taken: integer
+            * cpu_time_taken: integer
+            * memory_taken: integer
         } ]
     * Response body (202 Code):
+        * id: integer
+        * author_user_username: string
+        * problem_id: integer
+        * code: string
+        * language_name: string
+        * language_version: string
+        * time_sent: string (in the form of datetime %Y-%m-%d %H:%M:%S)
+        * checked: boolean
         * realime_link: string (link)
 
 * ### WS "/submissions/{submission_id}/realtime" — realtime results of submission
     * Each message from the server:
-        * Result from the checking system
+        * type: string (result, totals or  message)
+    * Type result:
+        * type: string (result)
+        * count: integer
+        * result: {
+            * id: integer
+            * submission_id: integer
+            * test_case_id: integer
+            * test_case_score: integer
+            * verdict_text: string
+            * verdict_details: string
+            * time_taken: integer
+            * cpu_time_taken: integer
+            * memory_taken: integer
+        }
+    * Type totals:
+        * type: string (totals)
+        * totals: {
+            * correct_score: integer
+            * total_score: integer
+        }
+    * Type message:
+        * type: string (message)
+        * message: string
 
 * ### GET "/submissions/{submission_id}/public" — get public data about a submission
     * Request headers:

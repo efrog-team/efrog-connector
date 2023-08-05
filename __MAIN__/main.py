@@ -19,6 +19,7 @@ from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from current_websocket import CurrentWebsocket
 from multiprocessing import Queue, Process
 from typing import Any
+from json import dumps
 
 loop: AbstractEventLoop = get_running_loop()
 fs_executor: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=1)
@@ -466,52 +467,46 @@ def check_test_case_process_wrapper(result_queue: Any, *args: ...) -> None:
 
 def check_problem(submission_id: int, problem_id: int, token: str, code: str, language: str) -> None:
     create_files_result: CreateFilesResult = lib.create_files(submission_id, code, language)
-    match create_files_result.status:
-        case 0:
-            run(current_websockets[submission_id].send_message(f"Saved succesfully"))
-            if language == 'C++ 17 (g++ 11.2)' or language == 'C 17 (gcc 11.2)':
-                run(current_websockets[submission_id].send_message(f"Compiled succesfully"))
-            test_cases: list[TestCase] = get_test_cases_db(problem_id, False, False, token)
-            correct_score: int = 0
-            total_score: int = 0
-            for index, test_case in enumerate(test_cases):
-                process = Process(target=check_test_case_process_wrapper, args=(processing_queue, submission_id, test_case.id, language, test_case.input, test_case.solution, ))
-                process.start()
-                process.join()
-                result: TestResult = processing_queue.get()
-                match result.status:
-                    case 0:
-                        run(current_websockets[submission_id].send_message(f"Test case #{index + 1}: Correct Answer in {result.time}ms ({result.cpu_time}ms) and {result.memory} KB"))
-                        correct_score += test_case.score
-                    case 1:
-                        run(current_websockets[submission_id].send_message(f"Test case #{index + 1}: Wrong Answer in {result.time}ms ({result.cpu_time}ms) and {result.memory} KB"))
-                    case 2:
-                        run(current_websockets[submission_id].send_message(f"Test case #{index + 1}: Compilation Error"))
-                    case 3:
-                        run(current_websockets[submission_id].send_message(f"Test case #{index + 1}: Runtime Error"))
-                    case 4:
-                        run(current_websockets[submission_id].send_message(f"Test case #{index + 1}: Time Limit"))
-                    case 5:
-                        run(current_websockets[submission_id].send_message(f"Test case #{index + 1}: Memory Limit"))
-                    case 6:
-                        run(current_websockets[submission_id].send_message(f"Test case #{index + 1}: Internal Server Error"))
-                    case _:
-                        run(current_websockets[submission_id].send_message(f"Test case #{index + 1}: Unexpected Error"))
-                total_score += test_case.score
-                create_submission_result_db(SubmissionResult(id=-1, submission_id=submission_id, test_case_id=test_case.id, verdict_id=result.status+1, verdict_details='', time_taken=result.time, cpu_time_taken=result.cpu_time, memory_taken=result.memory))
-            run(current_websockets[submission_id].send_message(f"Total result: {correct_score}/{total_score}"))
-        case 5:
-            test_cases: list[TestCase] = get_test_cases_db(problem_id, False, False, token)
-            for test_case in test_cases:
-                create_submission_result_db(SubmissionResult(id=-1, submission_id=submission_id, test_case_id=test_case.id, verdict_id=6, verdict_details='', time_taken=0, cpu_time_taken=0, memory_taken=0))
-            run(current_websockets[submission_id].send_message(f"Error in compilation or file creation occured"))
-        case 6:
-            test_cases: list[TestCase] = get_test_cases_db(problem_id, False, False, token)
-            for test_case in test_cases:
-                create_submission_result_db(SubmissionResult(id=-1, submission_id=submission_id, test_case_id=test_case.id, verdict_id=7, verdict_details='', time_taken=0, cpu_time_taken=0, memory_taken=0))
-            run(current_websockets[submission_id].send_message(f"Internal Server Error"))
-        case _:
-            run(current_websockets[submission_id].send_message(f"Unexpected Error"))
+    test_cases: list[TestCase] = get_test_cases_db(problem_id, False, False, token)
+    correct_score: int = 0
+    total_score: int = 0
+    for index, test_case in enumerate(test_cases):
+        if create_files_result.status == 0:
+            process: Process = Process(target=check_test_case_process_wrapper, args=(processing_queue, submission_id, test_case.id, language, test_case.input, test_case.solution, ))
+            process.start()
+            process.join()
+            test_result: TestResult = processing_queue.get()
+            if test_result.status == 0:
+                correct_score += test_case.score
+        else:
+            test_result: TestResult = TestResult(status=create_files_result.status, time=0, cpu_time=0, memory=0, description=create_files_result.description)
+        verdict: Verdict | None = get_verdict_db(test_result.status + 1)
+        if verdict is not None:
+            run(current_websockets[submission_id].send_message(dumps({
+                'type': 'result',
+                'count': index + 1,
+                'result': {
+                    'id': create_submission_result_db(SubmissionResult(id=-1, submission_id=submission_id, test_case_id=test_case.id, verdict_id=test_result.status+1, verdict_details='', time_taken=test_result.time, cpu_time_taken=test_result.cpu_time, memory_taken=test_result.memory)),
+                    'submission_id': submission_id,
+                    'test_case_id': test_case.id,
+                    'test_case_score': test_case.score,
+                    'verdict_text': verdict.text,
+                    'verdict_details': test_result.description,
+                    'time_taken': test_result.time,
+                    'cpu_time_taken': test_result.cpu_time,
+                    'memory_taken': test_result.memory
+                }
+            })))
+        else:
+            raise(HTTPException(status_code=404, detail="Verdict does not exist"))
+        total_score += test_case.score
+    run(current_websockets[submission_id].send_message(dumps({
+        'type': 'totals',
+        'totals': {
+            'correct_score': correct_score,
+            'total_score': total_score
+        }
+    })))
     lib.delete_files(submission_id)
     mark_submission_as_checked_db(submission_id, token)
     current_websockets[submission_id].safe_set_flag()
@@ -534,37 +529,37 @@ def submit(submission: SubmissionRequest, authorization: Annotated[str | None, H
 def get_submission(submission_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     if authorization is not None:
         submission_db: SubmissionWithResults = get_submission_with_results_db(submission_id, authorization)
-        if submission_db.checked:
-            results: list[dict[str, str | int]] = []
-            correct_score: int = 0
-            total_score: int = 0
-            for result in submission_db.results:
-                test_case_db: TestCase | None = get_test_case_db(result.test_case_id, submission_db.problem_id, authorization)
-                if test_case_db is not None:
-                    verdict_db: Verdict | None = get_verdict_db(result.verdict_id)
-                    if verdict_db is not None:
-                        results.append({
-                            'id': result.id,
-                            'submission_id': result.submission_id,
-                            'test_case_id': result.test_case_id,
-                            'test_case_score': test_case_db.score,
-                            'verdict_text': verdict_db.text,
-                            'verdict_details': result.verdict_details,
-                            'time_taken': result.time_taken,
-                            'cpu_time_taken': result.cpu_time_taken,
-                            'memory_taken': result.memory_taken
-                        })
-                        if verdict_db.id == 1:
-                            correct_score += test_case_db.score
-                        total_score += test_case_db.score
-                    else:
-                        raise HTTPException(status_code=404, detail="Verdict does not exist")
-                else:
-                    raise HTTPException(status_code=404, detail="Test case does not exist")
-            user_db: User | None = get_user_db(submission_db.author_user_id)
-            if user_db is not None:
-                language_db: Language | None = get_language_by_id_db(submission_db.language_id)
-                if language_db is not None:
+        user_db: User | None = get_user_db(submission_db.author_user_id)
+        if user_db is not None:
+            language_db: Language | None = get_language_by_id_db(submission_db.language_id)
+            if language_db is not None:
+                if submission_db.checked:
+                    results: list[dict[str, str | int]] = []
+                    correct_score: int = 0
+                    total_score: int = 0
+                    for result in submission_db.results:
+                        test_case_db: TestCase | None = get_test_case_db(result.test_case_id, submission_db.problem_id, authorization)
+                        if test_case_db is not None:
+                            verdict_db: Verdict | None = get_verdict_db(result.verdict_id)
+                            if verdict_db is not None:
+                                results.append({
+                                    'id': result.id,
+                                    'submission_id': result.submission_id,
+                                    'test_case_id': result.test_case_id,
+                                    'test_case_score': test_case_db.score,
+                                    'verdict_text': verdict_db.text,
+                                    'verdict_details': result.verdict_details,
+                                    'time_taken': result.time_taken,
+                                    'cpu_time_taken': result.cpu_time_taken,
+                                    'memory_taken': result.memory_taken
+                                })
+                                if verdict_db.id == 1:
+                                    correct_score += test_case_db.score
+                                total_score += test_case_db.score
+                            else:
+                                raise HTTPException(status_code=404, detail="Verdict does not exist")
+                        else:
+                            raise HTTPException(status_code=404, detail="Test case does not exist")
                     return JSONResponse({
                         'id': submission_db.id,
                         'author_user_username': user_db.username,
@@ -579,13 +574,21 @@ def get_submission(submission_id: int, authorization: Annotated[str | None, Head
                         'results': results
                     })
                 else:
-                    raise HTTPException(status_code=404, detail="Language does not exist")
+                    return JSONResponse({
+                        'id': submission_db.id,
+                        'author_user_username': user_db.username,
+                        'problem_id': submission_db.problem_id,
+                        'code': submission_db.code,
+                        'language_name': language_db.name,
+                        'language_version': language_db.version,
+                        'time_sent': submission_db.time_sent.strftime('%Y-%m-%d %H:%M:%S'),
+                        'checked': bool(submission_db.checked),
+                        'realime_link': f"ws://localhost:8000/submissions/{submission_id}/realtime"
+                    }, status_code=202)
             else:
-                raise HTTPException(status_code=404, detail="User does not exist")
+                raise HTTPException(status_code=404, detail="Language does not exist")
         else:
-            return JSONResponse({
-                'realime_link': f"ws://localhost:8000/submissions/{submission_id}/realtime"
-            }, status_code=202)
+            raise HTTPException(status_code=404, detail="User does not exist")
     else:
         raise HTTPException(status_code=401, detail="Invalid token")
 
@@ -602,11 +605,16 @@ async def websocket_endpoint_submissions(websocket: WebSocket, submission_id: in
                 await flag.wait()
             await current_websockets[submission_id].send_accumulated()
             del current_websockets[submission_id]
-            await websocket.send_text(f"Checking is finished. You can access full submission results by the link: GET http://localhost:8000/submissions/{submission_id}")
         else:
-            await websocket.send_text("There is already a websocket opened for this submission")
+            await websocket.send_text(dumps({
+                'type': 'message',
+                'message': "There is already a websocket opened for this submission"
+            }))
     except:
-        await websocket.send_text(f"There is no submission testing with such id. Try to access: GET http://localhost:8000/submissions/{submission_id}")
+        await websocket.send_text(dumps({
+            'type': 'message',
+            'message': f"There is no submission testing with such id. Try to access: GET http://localhost:8000/submissions/{submission_id}"
+        }))
     await websocket.close()
 
 @app.get("/submissions/{submission_id}/public")

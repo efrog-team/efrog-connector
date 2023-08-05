@@ -152,10 +152,10 @@ INSERT INTO languages (name, version, supported) VALUES ('C 17', 'gcc 11.2', 1);
 
 INSERT INTO verdicts (text) VALUES ('Correct Answer');
 INSERT INTO verdicts (text) VALUES ('Wrong Answer');
-INSERT INTO verdicts (text) VALUES ('Compilation Error');
 INSERT INTO verdicts (text) VALUES ('Runtime Error');
 INSERT INTO verdicts (text) VALUES ('Time Limit');
 INSERT INTO verdicts (text) VALUES ('Memory Limit');
+INSERT INTO verdicts (text) VALUES ('Compilation Error');
 INSERT INTO verdicts (text) VALUES ('Internal Server Error');
 
 INSERT INTO users (username, email, name, password) VALUES ('admin', 'admin@admin', 'admin', '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918');

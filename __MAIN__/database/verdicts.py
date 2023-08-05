@@ -2,29 +2,16 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(__file__).replace('\\', '/') + '/../')
 
-from mysql.connector import MySQLConnection
-from mysql.connector.abstracts import MySQLConnectionAbstract, MySQLCursorAbstract
-from config import database_config
+from database.mymysql import insert_into_values, select_from_where
 from models import Verdict
 from typing import Any
 
 def create_verdict(verdict: Verdict) -> None:
-    connection: MySQLConnectionAbstract
-    with MySQLConnection(**database_config) as connection:
-        connection.autocommit = True
-        cursor: MySQLCursorAbstract
-        with connection.cursor(dictionary=True) as cursor:
-            cursor.execute(f"INSERT INTO verdicts (name) VALUES ('{verdict.text}')")
+    insert_into_values('verdicts', ['name'], [verdict.text])
 
 def get_verdict(id: int) -> Verdict | None:
-    connection: MySQLConnectionAbstract
-    with MySQLConnection(**database_config) as connection:
-        connection.autocommit = True
-        cursor: MySQLCursorAbstract
-        with connection.cursor(dictionary=True) as cursor:
-            cursor.execute(f"SELECT id, text FROM verdicts WHERE id = {id}")
-            res: Any = cursor.fetchone()
-            if res is None:
-                return None
-            else:
-                return Verdict(id=res['id'], text=res['text'])
+    res: list[Any] = select_from_where(['id', 'text'], 'verdicts', f"id = {id}")
+    if len(res) == 0:
+        return None
+    else:
+        return Verdict(id=res[0]['id'], text=res[0]['text'])
