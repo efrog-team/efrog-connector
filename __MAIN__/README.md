@@ -537,7 +537,9 @@
         * empty
     * Response body:
         * id: integer
+        * author_user_username: string
         * problem_id: integer
+        * problem_name: string
         * language_name: string
         * language_version: string
         * time_sent: string (in the form of date %Y-%m-%d %H:%M:%S)
@@ -553,7 +555,9 @@
     * Response body:
         * submissions: array[ {
             * id: integer
+            * author_user_username: string
             * problem_id: integer
+            * problem_name: string
             * language_name: string
             * language_version: string
             * time_sent: string (in the form of date %Y-%m-%d %H:%M:%S)

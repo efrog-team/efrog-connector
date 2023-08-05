@@ -613,22 +613,32 @@ async def websocket_endpoint_submissions(websocket: WebSocket, submission_id: in
 def get_submission_public(submission_id: int)-> JSONResponse:
     submission: SubmissionPublic | None = get_submission_public_db(submission_id)
     if submission is not None:
-        language: Language | None = get_language_by_id_db(submission.language_id)
-        if language is not None:
-            verdict: Verdict | None = get_verdict_db(submission.total_verdict_id)
-            if verdict is not None:
-                return JSONResponse({
-                    'id': submission.id,
-                    'problem_id': submission.problem_id,
-                    'language_name': language.name,
-                    'language_version': language.version,
-                    'time_sent': submission.time_sent.strftime('%Y-%m-%d %H:%M:%S'),
-                    'total_verdict': verdict.text
-                })
+        user: User | None = get_user_db(id=submission.author_user_id)
+        if user is not None:
+            problem: Problem | None = get_problem_db(submission.problem_id)
+            if problem is not None:
+                language: Language | None = get_language_by_id_db(submission.language_id)
+                if language is not None:
+                    verdict: Verdict | None = get_verdict_db(submission.total_verdict_id)
+                    if verdict is not None:
+                        return JSONResponse({
+                            'id': submission.id,
+                            'author_user_username': user.username,
+                            'problem_id': problem.id,
+                            'problem_name': problem.name,
+                            'language_name': language.name,
+                            'language_version': language.version,
+                            'time_sent': submission.time_sent.strftime('%Y-%m-%d %H:%M:%S'),
+                            'total_verdict': verdict.text
+                        })
+                    else:
+                        raise HTTPException(status_code=404, detail="Verdict does not exist")
+                else:
+                    raise HTTPException(status_code=404, detail="Language does not exist")
             else:
-                raise HTTPException(status_code=404, detail="Verdict does not exist")
+                raise HTTPException(status_code=404, detail="Problem does not exist")
         else:
-            raise HTTPException(status_code=404, detail="Language does not exist")
+            raise HTTPException(status_code=404, detail="User does not exist")
     else:
         raise HTTPException(status_code=404, detail="Submission does not exist")
 
@@ -639,22 +649,28 @@ def get_submissions(username: str)-> JSONResponse:
         res: list[dict[str, str | int]] = []
         submissions: list[SubmissionPublic] = get_submissions_public_by_user(username)
         for submission in submissions:
-            language_db: Language | None = get_language_by_id_db(submission.language_id)
-            if language_db is not None:
-                verdict_db: Verdict | None = get_verdict_db(submission.total_verdict_id)
-                if verdict_db is not None:
-                    res.append({
-                        'id': submission.id,
-                        'problem_id': submission.problem_id,
-                        'language_name': language_db.name,
-                        'language_version': language_db.version,
-                        'time_sent': submission.time_sent.strftime('%Y-%m-%d %H:%M:%S'),
-                        'total_verdict': verdict_db.text
-                    })
+            problem_db: Problem | None = get_problem_db(submission.problem_id)
+            if problem_db is not None:
+                language_db: Language | None = get_language_by_id_db(submission.language_id)
+                if language_db is not None:
+                    verdict_db: Verdict | None = get_verdict_db(submission.total_verdict_id)
+                    if verdict_db is not None:
+                        res.append({
+                            'id': submission.id,
+                            'author_user_username': user_db.username,
+                            'problem_id': problem_db.id,
+                            'problem_name': problem_db.name,
+                            'language_name': language_db.name,
+                            'language_version': language_db.version,
+                            'time_sent': submission.time_sent.strftime('%Y-%m-%d %H:%M:%S'),
+                            'total_verdict': verdict_db.text
+                        })
+                    else:
+                        raise HTTPException(status_code=404, detail="Verdict does not exist")
                 else:
-                    raise HTTPException(status_code=404, detail="Verdict does not exist")
+                    raise HTTPException(status_code=404, detail="Language does not exist")
             else:
-                raise HTTPException(status_code=404, detail="Language does not exist")
+                raise HTTPException(status_code=404, detail="Problem does not exist")
         return JSONResponse({
             'submissions': res
         })
