@@ -27,7 +27,7 @@ CREATE TABLE team_members (
     team_id BIGINT UNSIGNED NOT NULL,
     coach BOOLEAN NOT NULL,
     confirmed BOOLEAN NOT NULL,
-    canceled BOOLEAN NOT NULL,
+    declined BOOLEAN NOT NULL,
     PRIMARY KEY (id),
     FOREIGN KEY (member_user_id) REFERENCES users(id),
     FOREIGN KEY (team_id) REFERENCES teams(id)
@@ -160,7 +160,7 @@ INSERT INTO verdicts (text) VALUES ('Internal Server Error');
 
 INSERT INTO users (username, email, name, password) VALUES ('admin', 'admin@admin', 'admin', '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918');
 INSERT INTO teams (name, owner_user_id, active, individual) VALUES ('admin', 1, 1, 1);
-INSERT INTO team_members (member_user_id, team_id, coach, confirmed, canceled) VALUES (1, 1, 0, 1, 0);
+INSERT INTO team_members (member_user_id, team_id, coach, confirmed, declined) VALUES (1, 1, 0, 1, 0);
 
 INSERT INTO problems (author_user_id, name, statement, input_statement, output_statement, notes, time_restriction, memory_restriction, private) VALUES (1, 'Square of a number', 'Your are given a number n. Return the square of n.', 'n <= 10^6', 'n ** 2', 'Nothing', 1, 128, 0);
 INSERT INTO test_cases (problem_id, input, solution, score, opened) VALUES (1, '1', '1', 0, 1);

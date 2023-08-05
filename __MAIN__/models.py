@@ -43,7 +43,7 @@ class TeamMember(BaseModel):
     team_id: int
     coach: int
     confirmed: int
-    canceled: int
+    declined: int
 
 class TeamMemberRequest(BaseModel):
     member_username: str

@@ -106,7 +106,7 @@
     * Response body:
         * empty
 
-* ### GET "/users/{username}/teams?only_owned={only_owned}&only_unowned={only_unowned}&only_unactive={only_unactive}&only_active={only_active}&only_coached={only_coached}&only_contested={only_contested}&only_confirmed={only_confirmed}&only_unconfirmed={only_unconfirmed}&only_canceled={only_canceled}&only_uncanceled={only_uncanceled}" — get all users teams
+* ### GET "/users/{username}/teams?only_owned={only_owned}&only_unowned={only_unowned}&only_unactive={only_unactive}&only_active={only_active}&only_coached={only_coached}&only_contested={only_contested}&only_confirmed={only_confirmed}&only_unconfirmed={only_unconfirmed}&only_declined={only_declined}&only_undeclined={only_undeclined}" — get all users teams
     * Request headers:
         * empty
     * Request parameters:
@@ -119,8 +119,8 @@
         * only_contested: boolean?
         * only_confirmed: boolean?
         * only_unconfirmed: boolean?
-        * only_canceled: boolean?
-        * only_uncanceled: boolean?
+        * only_declined: boolean?
+        * only_undeclined: boolean?
     * Request body:
         * empty
     * Response body:
@@ -180,7 +180,7 @@
     * Response body:
         * empty
 
-* ### GET "/teams/{team_name}/members?only_coaches={only_coaches}&only_contestants={only_contestants}&only_confirmed={only_confirmed}&only_unconfirmed={only_unconfirmed}&only_canceled={only_canceled}&only_uncanceled={only_uncanceled}" — get a team members
+* ### GET "/teams/{team_name}/members?only_coaches={only_coaches}&only_contestants={only_contestants}&only_confirmed={only_confirmed}&only_unconfirmed={only_unconfirmed}&only_declined={only_declined}&only_undeclined={only_undeclined}" — get a team members
     * Request headers:
         * empty
     * Request parameters:
@@ -189,8 +189,8 @@
         * only_contestants: boolean?
         * only_confirmed: boolean?
         * only_unconfirmed: boolean?
-        * only_canceled: boolean?
-        * only_uncanceled: boolean?
+        * only_declined: boolean?
+        * only_undeclined: boolean?
     * Request body:
         * empty
     * Response body:
@@ -199,7 +199,7 @@
             * team_name: string
             * coach: boolean
             * confirmed: boolean
-            * canceled: boolean
+            * declined: boolean
         } ]
 
 * ### GET "/teams/{team_name}/members/{member_username}" — get a team member
@@ -215,7 +215,7 @@
         * team_name: string
         * coach: boolean
         * confirmed: boolean
-        * canceled: boolean
+        * declined: boolean
 
 * ### PUT "/teams/{team_name}/members/{member_username}/make-coach" — make a team member coach
     * Request headers:
@@ -250,7 +250,7 @@
     * Response body:
         * empty
 
-* ### PUT "/teams/{team_name}/members/{member_username}/cancel" — cancel a team member
+* ### PUT "/teams/{team_name}/members/{member_username}/decline" — decline a team member
     * Request headers:
         * Authroization: string (access token)
     * Request parameters:

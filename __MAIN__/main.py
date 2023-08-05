@@ -3,7 +3,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from database.users_teams_members import create_user as create_user_db, get_user as get_user_db, get_and_check_user_by_token as get_user_by_token_db, update_user as update_user_db
 from database.users_teams_members import create_team as create_team_db, get_team as get_team_db, get_teams_by_user as get_teams_by_user_db, update_team as update_team_db, activate_deactivate_team as activate_deactivate_team_db, check_if_team_can_be_deleted as check_if_team_can_be_deleted_db, delete_team as delete_team_db
-from database.users_teams_members import create_team_member as create_team_member_db, get_team_member_by_names as get_team_member_by_names_db, get_team_members_by_team_name as get_team_members_db, make_coach_contestant as make_coach_contestant_db, confirm_team_member as confirm_team_member_db, cancel_team_member as cancel_team_member_db, delete_team_member as delete_team_member_db
+from database.users_teams_members import create_team_member as create_team_member_db, get_team_member_by_names as get_team_member_by_names_db, get_team_members_by_team_name as get_team_members_db, make_coach_contestant as make_coach_contestant_db, confirm_team_member as confirm_team_member_db, decline_team_member as decline_team_member_db, delete_team_member as delete_team_member_db
 from database.problems import create_problem as create_problem_db, get_problem as get_problem_db, get_problems_by_author as get_problems_by_author_db, make_problem_public_private as make_problem_public_private_db, check_if_problem_can_be_edited as check_if_problem_can_be_edited_db, update_problem as update_problem_db, delete_problem as delete_problem_db
 from database.test_cases import create_test_case as create_test_case_db, get_test_case as get_test_case_db, get_test_cases as get_test_cases_db, make_test_case_opened_closed as make_test_case_opened_closed_db, update_test_case as update_test_case_db, delete_test_case as delete_test_case_db
 from database.submissions_results import create_submission as create_submission_db, mark_submission_as_checked as mark_submission_as_checked_db, create_submission_result as create_submission_result_db, get_submission_with_results as get_submission_with_results_db, get_submissions_public_by_user as get_submissions_public_by_user, get_submission_public as get_submission_public_db
@@ -161,9 +161,9 @@ def put_team(team_name: str, team: TeamRequestUpdate, authorization: Annotated[s
     return JSONResponse({})
 
 @app.get("/users/{username}/teams")
-def get_teams(username: str, only_owned: bool = False, only_unowned: bool = False, only_active: bool = False, only_unactive: bool = False, only_coached: bool = False, only_contested: bool = False, only_confirmed: bool = False, only_unconfirmed: bool = False, only_canceled: bool = False, only_uncanceled: bool = False) -> JSONResponse:
+def get_teams(username: str, only_owned: bool = False, only_unowned: bool = False, only_active: bool = False, only_unactive: bool = False, only_coached: bool = False, only_contested: bool = False, only_confirmed: bool = False, only_unconfirmed: bool = False, only_declined: bool = False, only_undeclined: bool = False) -> JSONResponse:
     res: list[dict[str, str | int]] = []
-    for team in get_teams_by_user_db(username, only_owned, only_unowned, only_active, only_unactive, only_coached, only_contested, only_confirmed, only_unconfirmed, only_canceled, only_uncanceled):
+    for team in get_teams_by_user_db(username, only_owned, only_unowned, only_active, only_unactive, only_coached, only_contested, only_confirmed, only_unconfirmed, only_declined, only_undeclined):
         user: User | None = get_user_db(id=team.owner_user_id)
         if user is not None:
             res.append({
@@ -214,9 +214,9 @@ def post_team_member(team_member: TeamMemberRequest, team_name: str, authorizati
     return JSONResponse({})
 
 @app.get("/teams/{team_name}/members")
-def get_team_members(team_name: str, only_coaches: bool = False, only_contestants: bool = False, only_confirmed: bool = False, only_unconfirmed: bool = False, only_canceled: bool = False, only_uncanceled: bool = False) -> JSONResponse:
+def get_team_members(team_name: str, only_coaches: bool = False, only_contestants: bool = False, only_confirmed: bool = False, only_unconfirmed: bool = False, only_declined: bool = False, only_undeclined: bool = False) -> JSONResponse:
     res: list[dict[str, str | int]] = []
-    for team_member in get_team_members_db(team_name, only_coaches, only_contestants, only_confirmed, only_unconfirmed, only_canceled, only_uncanceled):
+    for team_member in get_team_members_db(team_name, only_coaches, only_contestants, only_confirmed, only_unconfirmed, only_declined, only_undeclined):
         member_db: User | None = get_user_db(id=team_member.member_user_id)
         if member_db is not None:
             res.append({
@@ -224,7 +224,7 @@ def get_team_members(team_name: str, only_coaches: bool = False, only_contestant
                 'team_name': team_name,
                 'coach': bool(team_member.coach),
                 'confirmed': bool(team_member.confirmed),
-                'canceled': bool(team_member.canceled)
+                'declined': bool(team_member.declined)
             })
         else:
             raise HTTPException(status_code=404, detail="Team member does not exist")
@@ -241,7 +241,7 @@ def get_team_member(team_name: str, member_username: str) -> JSONResponse:
             'team_name': team_name,
             'coach': bool(team_member_db.coach),
             'confirmed': bool(team_member_db.confirmed),
-            'canceled': bool(team_member_db.canceled)
+            'declined': bool(team_member_db.declined)
         })
     else:
         raise HTTPException(status_code=404, detail="Team member does not exist")
@@ -270,10 +270,10 @@ def put_confirm_team_member(team_name: str, member_username: str, authorization:
         raise HTTPException(status_code=401, detail="Invalid token")
     return JSONResponse({})
 
-@app.put("/teams/{team_name}/members/{member_username}/cancel")
-def put_cancel_team_member(team_name: str, member_username: str, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+@app.put("/teams/{team_name}/members/{member_username}/decline")
+def put_decline_team_member(team_name: str, member_username: str, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     if authorization is not None:
-        cancel_team_member_db(team_name, member_username, authorization)
+        decline_team_member_db(team_name, member_username, authorization)
     else:
         raise HTTPException(status_code=401, detail="Invalid token")
     return JSONResponse({})

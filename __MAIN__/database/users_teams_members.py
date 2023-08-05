@@ -89,7 +89,7 @@ def create_team(team: Team | TeamRequest, token: str = '') -> None:
     if get_team(name=team.name, individual=individual) is None:
         res_team_id: int | None = insert_into_values('teams', ['name', 'owner_user_id', 'active', 'individual'], [team.name, owner_user_id, active, individual])
         if res_team_id is not None:
-            create_team_member(TeamMember(id=-1, member_user_id=owner_user_id, team_id=res_team_id, coach=0, confirmed=1, canceled=0))
+            create_team_member(TeamMember(id=-1, member_user_id=owner_user_id, team_id=res_team_id, coach=0, confirmed=1, declined=0))
         else:
             raise HTTPException(status_code=500, detail="Internal Server Error")
     else:
@@ -102,7 +102,7 @@ def get_team(id: int = -1, name: str = '', individual: int = -1) -> Team | None:
     else:
         return Team(id=res[0]['id'], name=res[0]['name'], owner_user_id=res[0]['owner_user_id'], active=res[0]['active'], individual=res[0]['individual'])
 
-def get_teams_by_user(username: str, only_owned: bool, only_unowned: bool, only_active: bool, only_unactive: bool, only_coached: bool, only_contested: bool, only_confirmed: bool, only_unconfirmed: bool, only_canceled: bool, only_uncanceled: bool) -> list[Team]:
+def get_teams_by_user(username: str, only_owned: bool, only_unowned: bool, only_active: bool, only_unactive: bool, only_coached: bool, only_contested: bool, only_confirmed: bool, only_unconfirmed: bool, only_declined: bool, only_undeclined: bool) -> list[Team]:
     user: User | None = get_user(username=username)
     if user is not None:
         filter_conditions = ""
@@ -122,10 +122,10 @@ def get_teams_by_user(username: str, only_owned: bool, only_unowned: bool, only_
             filter_conditions += f' AND team_members.confirmed = 1'
         if only_unconfirmed:
             filter_conditions += f' AND team_members.confirmed = 0'
-        if only_canceled:
-            filter_conditions += f' AND team_members.canceled = 1'
-        if only_uncanceled:
-            filter_conditions += f' AND team_members.canceled = 0'
+        if only_declined:
+            filter_conditions += f' AND team_members.declined = 1'
+        if only_undeclined:
+            filter_conditions += f' AND team_members.declined = 0'
         res: list[Any] = select_from_inner_join_where(['teams.id', 'teams.name', 'teams.owner_user_id', 'teams.active', 'teams.individual'], 'teams', 'team_members', 'team_members.team_id = teams.id', f"team_members.member_user_id = {user.id} AND teams.individual = 0{filter_conditions}")
         teams: list[Team] = []
         for team in res:
@@ -187,7 +187,7 @@ def delete_team(team_name: str, token: str) -> None:
 def create_team_member(team_member: TeamMember | TeamMemberRequest, team_name: str = '', token: str = '') -> None:
     if isinstance(team_member, TeamMember):
         if get_team_member_by_ids(team_member_id=team_member.member_user_id, team_id=team_member.team_id) is None:
-            insert_into_values('team_members', ['member_user_id', 'team_id', 'coach', 'confirmed', 'canceled'], [team_member.member_user_id, team_member.team_id, team_member.coach, team_member.confirmed, team_member.canceled])
+            insert_into_values('team_members', ['member_user_id', 'team_id', 'coach', 'confirmed', 'declined'], [team_member.member_user_id, team_member.team_id, team_member.coach, team_member.confirmed, team_member.declined])
         else:
             raise HTTPException(status_code=409, detail="Member already exists")
     else:
@@ -198,7 +198,7 @@ def create_team_member(team_member: TeamMember | TeamMemberRequest, team_name: s
                 owner_user_id: int | None = get_and_check_user_by_token(token).id
                 if team.owner_user_id == owner_user_id:
                     if get_team_member_by_ids(team_member_id=team_member_user.id, team_id=team.id) is None:
-                        insert_into_values('team_members', ['member_user_id', 'team_id', 'coach', 'confirmed', 'canceled'], [team_member_user.id, team.id, 0, 0, 0])
+                        insert_into_values('team_members', ['member_user_id', 'team_id', 'coach', 'confirmed', 'declined'], [team_member_user.id, team.id, 0, 0, 0])
                     else:
                         raise HTTPException(status_code=409, detail="Member already exists")
                 else:
@@ -209,11 +209,11 @@ def create_team_member(team_member: TeamMember | TeamMemberRequest, team_name: s
             raise HTTPException(status_code=404, detail="Member does not exist")
 
 def get_team_member_by_ids(id: int = -1, team_member_id: int = -1, team_id: int = -1) -> TeamMember | None:
-    res: list[Any] = select_from_where(['id', 'member_user_id', 'team_id', 'coach', 'confirmed', 'canceled'], 'team_members', f"id = {id} OR (member_user_id = {team_member_id} AND team_id = {team_id})")
+    res: list[Any] = select_from_where(['id', 'member_user_id', 'team_id', 'coach', 'confirmed', 'declined'], 'team_members', f"id = {id} OR (member_user_id = {team_member_id} AND team_id = {team_id})")
     if len(res) == 0:
         return None
     else:
-        return TeamMember(id=res[0]['id'], member_user_id=res[0]['member_user_id'], team_id=res[0]['team_id'], coach=res[0]['coach'], confirmed=res[0]['confirmed'], canceled=res[0]['canceled'])
+        return TeamMember(id=res[0]['id'], member_user_id=res[0]['member_user_id'], team_id=res[0]['team_id'], coach=res[0]['coach'], confirmed=res[0]['confirmed'], declined=res[0]['declined'])
 
 def get_team_member_by_names(team_member_username: str, team_name: str) -> TeamMember | None:
     team_member: User | None = get_user(username=team_member_username)
@@ -226,7 +226,7 @@ def get_team_member_by_names(team_member_username: str, team_name: str) -> TeamM
     else:
         raise HTTPException(status_code=404, detail="User does not exist")
 
-def get_team_members_by_team_id(team_id: int, only_coaches: bool, only_contestants: bool, only_confirmed: bool, only_unconfirmed: bool, only_canceled: bool, only_uncanceled: bool) -> list[TeamMember]:
+def get_team_members_by_team_id(team_id: int, only_coaches: bool, only_contestants: bool, only_confirmed: bool, only_unconfirmed: bool, only_declined: bool, only_undeclined: bool) -> list[TeamMember]:
     filter_conditions = ""
     if only_coaches:
         filter_conditions += f' AND team_members.coach = 1'
@@ -236,20 +236,20 @@ def get_team_members_by_team_id(team_id: int, only_coaches: bool, only_contestan
         filter_conditions += f' AND team_members.confirmed = 1'
     if only_unconfirmed:
         filter_conditions += f' AND team_members.confirmed = 0'
-    if only_canceled:
-        filter_conditions += f' AND team_members.canceled = 1'
-    if only_uncanceled:
-        filter_conditions += f' AND team_members.canceled = 0'
-    res: list[Any] = select_from_where(['id', 'member_user_id', 'team_id', 'coach', 'confirmed', 'canceled'], 'team_members', f"team_id = {team_id}{filter_conditions}")
+    if only_declined:
+        filter_conditions += f' AND team_members.declined = 1'
+    if only_undeclined:
+        filter_conditions += f' AND team_members.declined = 0'
+    res: list[Any] = select_from_where(['id', 'member_user_id', 'team_id', 'coach', 'confirmed', 'declined'], 'team_members', f"team_id = {team_id}{filter_conditions}")
     team_members: list[TeamMember] = []
     for team_member in res:
-        team_members.append(TeamMember(id=team_member['id'], member_user_id=team_member['member_user_id'], team_id=team_member['team_id'], coach=team_member['coach'], confirmed=team_member['confirmed'], canceled=team_member['canceled']))
+        team_members.append(TeamMember(id=team_member['id'], member_user_id=team_member['member_user_id'], team_id=team_member['team_id'], coach=team_member['coach'], confirmed=team_member['confirmed'], declined=team_member['declined']))
     return team_members
 
-def get_team_members_by_team_name(team_name: str, only_coaches: bool, only_contestants: bool, only_confirmed: bool, only_unconfirmed: bool, only_canceled: bool, only_uncanceled: bool) -> list[TeamMember]:
+def get_team_members_by_team_name(team_name: str, only_coaches: bool, only_contestants: bool, only_confirmed: bool, only_unconfirmed: bool, only_declined: bool, only_undeclined: bool) -> list[TeamMember]:
     team: Team | None = get_team(name=team_name, individual=0)
     if team is not None:
-        return get_team_members_by_team_id(team.id, only_coaches, only_contestants, only_confirmed, only_unconfirmed, only_canceled, only_uncanceled)
+        return get_team_members_by_team_id(team.id, only_coaches, only_contestants, only_confirmed, only_unconfirmed, only_declined, only_undeclined)
     else:
         raise HTTPException(status_code=404, detail="Team does not exist")
 
@@ -278,16 +278,16 @@ def confirm_team_member(team_name: str, team_member_username: str, token: str) -
     else:
         raise HTTPException(status_code=403, detail="You are trying to confirm someone but not yourself")
 
-def cancel_team_member(team_name: str, team_member_username: str, token: str) -> None:
+def decline_team_member(team_name: str, team_member_username: str, token: str) -> None:
     team_member: User = get_and_check_user_by_token(token)
     if team_member.username == team_member_username:
         team_member_db: TeamMember | None = get_team_member_by_names(team_member_username=team_member_username, team_name=team_name)
         if team_member_db is not None:
-            update_set_where("team_members", f"canceled = 1", f"id = {team_member_db.id}")
+            update_set_where("team_members", f"declined = 1", f"id = {team_member_db.id}")
         else:
             raise HTTPException(status_code=404, detail="Member does not exist")
     else:
-        raise HTTPException(status_code=403, detail="You are trying to cancel someone but not yourself")
+        raise HTTPException(status_code=403, detail="You are trying to decline someone but not yourself")
 
 def delete_team_member(team_name: str, team_member_username: str, token: str) -> None:
     team: Team | None = get_team(name=team_name, individual=0)
