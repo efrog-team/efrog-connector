@@ -13,7 +13,7 @@ from typing import Any
 
 def create_submission(submission: Submission | SubmissionRequest, token: str = '') -> int:
     if isinstance(submission, Submission):
-        submission_id: int | None = insert_into_values('submissions', ['author_user_id', 'problem_id', 'code', 'language_id', 'time_sent', 'checked'], [submission.author_user_id, submission.problem_id, submission.code, submission.language_id, submission.time_sent.strftime('%Y-%m-%d %H:%M:%S'), submission.checked])
+        submission_id: int | None = insert_into_values('submissions', ['author_user_id', 'problem_id', 'code', 'language_id', 'time_sent', 'checked'], {'author_user_id': submission.author_user_id, 'problem_id': submission.problem_id, 'code': submission.code, 'language_id': submission.language_id, 'time_sent': submission.time_sent, 'checked': submission.checked})
         if submission_id is not None:
             return submission_id
         else:
@@ -25,7 +25,7 @@ def create_submission(submission: Submission | SubmissionRequest, token: str = '
             if problem is not None:
                 author_user_id: int | None = get_and_check_user_by_token(token).id
                 if (problem.private == 1 and problem.author_user_id == author_user_id) or problem.private == 0:
-                    submission_id: int | None = insert_into_values('submissions', ['author_user_id', 'problem_id', 'code', 'language_id', 'time_sent', 'checked'], [author_user_id, submission.problem_id, submission.code, language.id, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 0])
+                    submission_id: int | None = insert_into_values('submissions', ['author_user_id', 'problem_id', 'code', 'language_id', 'time_sent', 'checked'], {'author_user_id': author_user_id, 'problem_id': submission.problem_id, 'code': submission.code, 'language_id': language.id, 'time_sent': datetime.now(), 'checked': 0})
                     if submission_id is not None:
                         return submission_id
                     else:
@@ -38,7 +38,7 @@ def create_submission(submission: Submission | SubmissionRequest, token: str = '
             raise HTTPException(status_code=404, detail="Language does not exist")
 
 def get_submission(id: int, token: str) -> Submission | None:
-    res: list[Any] = select_from_where(['id', 'author_user_id', 'problem_id', 'code', 'language_id', 'time_sent', 'checked'], 'submissions', f"id = {id}")
+    res: list[Any] = select_from_where(['id', 'author_user_id', 'problem_id', 'code', 'language_id', 'time_sent', 'checked'], 'submissions', "id = %(id)s", {'id': id})
     if len(res) == 0:
         return None
     else:
@@ -49,11 +49,11 @@ def get_submission(id: int, token: str) -> Submission | None:
             raise HTTPException(status_code=403, detail="You are not the author of this submission")
 
 def get_submission_public(id: int) -> SubmissionPublic | None:
-    submission_res: list[Any] = select_from_where(['id', 'author_user_id', 'problem_id', 'language_id', 'time_sent'], 'submissions', f"id = {id} AND checked = 1")
+    submission_res: list[Any] = select_from_where(['id', 'author_user_id', 'problem_id', 'language_id', 'time_sent'], 'submissions', "id = %(id)s AND checked = 1", {'id': id})
     if len(submission_res) == 0:
         return None
     else:
-        verdict_res: list[Any] = select_from_where(['MAX(verdict_id) AS total_verdict_id'], 'submission_results', f'submission_id = {id}')
+        verdict_res: list[Any] = select_from_where(['MAX(verdict_id) AS total_verdict_id'], 'submission_results', "submission_id = %(id)s", {'id': id})
         if len(verdict_res) == 0:
             return None
         else:
@@ -62,10 +62,10 @@ def get_submission_public(id: int) -> SubmissionPublic | None:
 def get_submissions_public_by_user(username: str) -> list[SubmissionPublic]:
     user: User | None = get_user(username=username)
     if user is not None:
-        res: list[Any] = select_from_where(['id', 'author_user_id', 'problem_id', 'language_id', 'time_sent'], 'submissions', f"author_user_id = {user.id} AND checked = 1")
+        res: list[Any] = select_from_where(['id', 'author_user_id', 'problem_id', 'language_id', 'time_sent'], 'submissions', "author_user_id = %(user_id)s AND checked = 1", {'user_id': user.id})
         submissions: list[SubmissionPublic] = []
         for submission in res:
-            verdict_res: list[Any] = select_from_where(['MAX(verdict_id) AS total_verdict_id'], 'submission_results', f'submission_id = {submission["id"]}')
+            verdict_res: list[Any] = select_from_where(['MAX(verdict_id) AS total_verdict_id'], 'submission_results', "submission_id = %(submission_id)s", {'submission_id': submission['id']})
             if len(verdict_res) != 0:
                 submissions.append(SubmissionPublic(id=submission['id'], author_user_id=submission['author_user_id'], problem_id=submission['problem_id'], language_id=submission['language_id'], time_sent=submission['time_sent'], total_verdict_id=verdict_res[0]['total_verdict_id']))
         return submissions
@@ -76,14 +76,14 @@ def mark_submission_as_checked(id: int, token: str) -> None:
     submission: Submission | None = get_submission(id, token)
     if submission is not None:
         if submission.author_user_id == get_and_check_user_by_token(token).id:
-            update_set_where('submissions', 'checked = 1', f"id = {id}")
+            update_set_where('submissions', 'checked = 1', "id = %(id)s", {'id': id})
         else:
             raise HTTPException(status_code=403, detail="You are not the author of this submission")
     else:
         raise HTTPException(status_code=404, detail="Submission does not exist")
 
 def create_submission_result(submission_result: SubmissionResult) -> int:
-    submission_result_id: int | None = insert_into_values('submission_results', ['submission_id', 'test_case_id', 'verdict_id', 'verdict_details', 'time_taken', 'cpu_time_taken', 'memory_taken'], [submission_result.submission_id, submission_result.test_case_id, submission_result.verdict_id, submission_result.verdict_details, submission_result.time_taken, submission_result.cpu_time_taken, submission_result.memory_taken])
+    submission_result_id: int | None = insert_into_values('submission_results', ['submission_id', 'test_case_id', 'verdict_id', 'verdict_details', 'time_taken', 'cpu_time_taken', 'memory_taken'], {'submission_id': submission_result.submission_id, 'test_case_id': submission_result.test_case_id, 'verdict_id': submission_result.verdict_id, 'verdict_details': submission_result.verdict_details, 'time_taken': submission_result.time_taken, 'cpu_time_taken': submission_result.cpu_time_taken, 'memory_taken': submission_result.memory_taken})
     if submission_result_id is not None:
         return submission_result_id
     else:
@@ -93,7 +93,7 @@ def get_submission_with_results(id: int, token: str) -> SubmissionWithResults:
     submission: Submission | None = get_submission(id, token)
     if submission is not None:
         if submission.author_user_id == get_and_check_user_by_token(token).id:
-            res: list[Any] = select_from_where(['id', 'submission_id', 'test_case_id', 'verdict_id', 'verdict_details', 'time_taken', 'cpu_time_taken', 'memory_taken'], 'submission_results', f"submission_id = {submission.id}")
+            res: list[Any] = select_from_where(['id', 'submission_id', 'test_case_id', 'verdict_id', 'verdict_details', 'time_taken', 'cpu_time_taken', 'memory_taken'], 'submission_results', "submission_id = %(submission_id)s", {'submission_id': submission.id})
             results: list[SubmissionResult] = []
             for result in res:
                 results.append(SubmissionResult(id=result['id'], submission_id=result['submission_id'], test_case_id=result['test_case_id'], verdict_id=result['verdict_id'], verdict_details=result['verdict_details'], time_taken=result['time_taken'], cpu_time_taken=result['cpu_time_taken'], memory_taken=result['memory_taken']))

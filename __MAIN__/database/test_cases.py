@@ -11,7 +11,7 @@ from typing import Any
 
 def create_test_case(test_case: TestCase | TestCaseRequest, problem_id: int, token: str = '') -> int:
     if isinstance(test_case, TestCase):
-        test_case_id: int | None = insert_into_values('test_cases', ['problem_id', 'input', 'solution', 'score', 'opened'], [test_case.problem_id, test_case.input, test_case.solution, test_case.score, test_case.opened])
+        test_case_id: int | None = insert_into_values('test_cases', ['problem_id', 'input', 'solution', 'score', 'opened'], {'problem_id': problem_id, 'input': test_case.input, 'solution': test_case.solution, 'score': test_case.score, 'opened': test_case.opened})
         if test_case_id is not None:
             return test_case_id
         else:
@@ -22,7 +22,7 @@ def create_test_case(test_case: TestCase | TestCaseRequest, problem_id: int, tok
             if check_if_problem_can_be_edited(problem_id, token):
                 author_user_id: int | None = get_and_check_user_by_token(token).id
                 if problem.author_user_id == author_user_id:
-                    test_case_id: int | None = insert_into_values('test_cases', ['problem_id', 'input', 'solution', 'score', 'opened'], [problem_id, test_case.input, test_case.solution, test_case.score, int(test_case.opened)])
+                    test_case_id: int | None = insert_into_values('test_cases', ['problem_id', 'input', 'solution', 'score', 'opened'], {'problem_id': problem_id, 'input': test_case.input, 'solution': test_case.solution, 'score': test_case.score, 'opened': int(test_case.opened)})
                     if test_case_id is not None:
                         return test_case_id
                     else:
@@ -38,7 +38,7 @@ def get_test_case(id: int, problem_id: int, token: str = '') -> TestCase | None:
     problem: Problem | None = get_problem(problem_id, token)
     if problem is not None:
         if (problem.private == 1 and token != '' and problem.author_user_id == get_and_check_user_by_token(token).id) or problem.private == 0:
-            res: list[Any] = select_from_where(['id', 'problem_id', 'input', 'solution', 'score', 'opened'], 'test_cases', f"id = {id}")
+            res: list[Any] = select_from_where(['id', 'problem_id', 'input', 'solution', 'score', 'opened'], 'test_cases', "id = %(id)s", {'id': id})
             if len(res) == 0:
                 return None
             else:
@@ -72,7 +72,7 @@ def get_test_cases(problem_id: int, only_opened: bool, only_closed: bool, token:
                 conditions += " AND opened = 1"
             if only_closed:
                 conditions += " AND opened = 0"
-            res: list[Any] = select_from_where(['id', 'problem_id', 'input', 'solution', 'score', 'opened'], 'test_cases', f"problem_id = {problem_id}{conditions}")
+            res: list[Any] = select_from_where(['id', 'problem_id', 'input', 'solution', 'score', 'opened'], 'test_cases', "problem_id = %(problem_id)s" + conditions, {'problem_id': problem_id})
             test_cases: list[TestCase] = []
             for test_case in res:
                 test_cases.append(TestCase(id=test_case['id'], problem_id=test_case['problem_id'], input=test_case['input'], solution=test_case['solution'], score=test_case['score'], opened=test_case['opened']))
@@ -97,7 +97,7 @@ def make_test_case_opened_closed(id: int, problem_id: int, opened: int, token: s
         if test_case is not None:
             author_user_id: int | None = get_and_check_user_by_token(token).id
             if problem.author_user_id == author_user_id:
-                update_set_where('test_cases', f"opened = {opened}", f"id = {id}")
+                update_set_where('test_cases', "opened = %(opened)s", "id = %(id)s", {'opened': opened, 'id': id})
             else:
                 raise HTTPException(status_code=403, detail="You are not the author of the problem")
         else:
@@ -114,11 +114,11 @@ def update_test_case(id: int, problem_id: int, test_case_update: TestCaseRequest
                 author_user_id: int | None = get_and_check_user_by_token(token).id
                 if problem_db.author_user_id == author_user_id:
                     if test_case_update.input is not None and test_case_update.input != '':
-                        update_set_where('test_cases', f"input = '{test_case_update.input}'", f"id = {id}")
+                        update_set_where('test_cases', "input = %(test_case_update_input)s", "id = %(id)s", {'test_case_update_input': test_case_update.input, 'id': id})
                     if test_case_update.solution is not None and test_case_update.solution != '':
-                        update_set_where('test_cases', f"solution = '{test_case_update.solution}'", f"id = {id}")
+                        update_set_where('test_cases', "solution = %(test_case_update_solution)s", "id = %(id)s", {'test_case_update_solution': test_case_update.solution, 'id': id})
                     if test_case_update.score is not None and test_case_update.score >= 0:
-                        update_set_where('test_cases', f"score = {test_case_update.score}", f"id = {id}")
+                        update_set_where('test_cases', "score = %(test_case_update_score)s", "id = %(id)s", {'test_case_update_score': test_case_update.score, 'id': id})
                 else:
                     raise HTTPException(status_code=403, detail="You are not the author of the problem")
             else:
@@ -136,7 +136,7 @@ def delete_test_case(id: int, problem_id: int, token: str) -> None:
             if check_if_problem_can_be_edited(test_case.problem_id, token):
                 author_user_id: int | None = get_and_check_user_by_token(token).id
                 if problem.author_user_id == author_user_id:
-                    delete_from_where('test_cases', f"id = {id}")
+                    delete_from_where('test_cases', "id = %(id)s", {'id': id})
                 else:
                     raise HTTPException(status_code=403, detail="You are not the author of the test case")
             else:
