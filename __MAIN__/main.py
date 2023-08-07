@@ -487,7 +487,7 @@ def check_problem(submission_id: int, problem_id: int, token: str, code: str, la
                 'type': 'result',
                 'count': index + 1,
                 'result': {
-                    'id': create_submission_result_db(SubmissionResult(id=-1, submission_id=submission_id, test_case_id=test_case.id, verdict_id=test_result.status+1, verdict_details='', time_taken=test_result.time, cpu_time_taken=test_result.cpu_time, memory_taken=test_result.memory)),
+                    'id': create_submission_result_db(SubmissionResult(id=-1, submission_id=submission_id, test_case_id=test_case.id, verdict_id=test_result.status+1, verdict_details=test_result.description, time_taken=test_result.time, cpu_time_taken=test_result.cpu_time, memory_taken=test_result.memory)),
                     'submission_id': submission_id,
                     'test_case_id': test_case.id,
                     'test_case_score': test_case.score,
