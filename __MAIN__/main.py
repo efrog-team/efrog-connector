@@ -470,6 +470,7 @@ def check_problem(submission_id: int, problem_id: int, token: str, code: str, la
     test_cases: list[TestCase] = get_test_cases_db(problem_id, False, False, token)
     correct_score: int = 0
     total_score: int = 0
+    total_verdict: tuple[int, str] = (-1, "")
     for index, test_case in enumerate(test_cases):
         if create_files_result.status == 0:
             process: Process = Process(target=check_test_case_process_wrapper, args=(processing_queue, submission_id, test_case.id, language, test_case.input, test_case.solution, ))
@@ -500,11 +501,13 @@ def check_problem(submission_id: int, problem_id: int, token: str, code: str, la
         else:
             raise(HTTPException(status_code=404, detail="Verdict does not exist"))
         total_score += test_case.score
+        total_verdict = (test_result.status, test_result.description)
     run(current_websockets[submission_id].send_message(dumps({
         'type': 'totals',
         'totals': {
             'correct_score': correct_score,
-            'total_score': total_score
+            'total_score': total_score,
+            'total_verdict': total_verdict[1]
         }
     })))
     lib.delete_files(submission_id)
@@ -537,6 +540,7 @@ def get_submission(submission_id: int, authorization: Annotated[str | None, Head
                     results: list[dict[str, str | int]] = []
                     correct_score: int = 0
                     total_score: int = 0
+                    total_verdict: tuple[int, str] = (-1, "")
                     for result in submission_db.results:
                         test_case_db: TestCase | None = get_test_case_db(result.test_case_id, submission_db.problem_id, authorization)
                         if test_case_db is not None:
@@ -556,6 +560,7 @@ def get_submission(submission_id: int, authorization: Annotated[str | None, Head
                                 if verdict_db.id == 1:
                                     correct_score += test_case_db.score
                                 total_score += test_case_db.score
+                                total_verdict = max(total_verdict, (verdict_db.id, verdict_db.text))
                             else:
                                 raise HTTPException(status_code=404, detail="Verdict does not exist")
                         else:
@@ -571,6 +576,7 @@ def get_submission(submission_id: int, authorization: Annotated[str | None, Head
                         'checked': bool(submission_db.checked),
                         'correct_score': correct_score,
                         'total_score': total_score,
+                        'total_verdict': total_verdict[1],
                         'results': results
                     })
                 else:

@@ -510,6 +510,7 @@
         * checked: boolean
         * correct_score: integer
         * total_score: integer
+        * total_verdict: string
         * results: array[ {
             * id: integer
             * submission_id: integer
@@ -554,6 +555,7 @@
         * totals: {
             * correct_score: integer
             * total_score: integer
+            * total_verdict: string
         }
     * Type message:
         * type: string (message)
