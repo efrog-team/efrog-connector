@@ -30,7 +30,7 @@ def create_user(user: User | UserRequest) -> None:
         raise HTTPException(status_code=409, detail="Username is blocked")
 
 def get_user(id: int = -1, username: str = '', email: str = '') -> User | None:
-    res: list[Any] = select_from_where(['id', 'username', 'email', 'name', 'password'], 'users', "id = %(id)s OR username = %(username)s OR email = %(email)s", {'id': id, 'username': username, 'email': email})
+    res: list[Any] = select_from_where(['id', 'username', 'email', 'name', 'password'], 'users', "id = %(id)s OR username = BINARY %(username)s OR email = BINARY %(email)s", {'id': id, 'username': username, 'email': email})
     if len(res) == 0:
         return None
     else:
@@ -96,7 +96,7 @@ def create_team(team: Team | TeamRequest, token: str = '') -> None:
         raise HTTPException(status_code=409, detail="Team already exists")
                 
 def get_team(id: int = -1, name: str = '', individual: int = -1) -> Team | None:
-    res: list[Any] = select_from_where(['id', 'name', 'owner_user_id', 'active', 'individual'], 'teams', "id = %(id)s OR (name = %(name)s AND individual = %(individual)s)", {'id': id, 'name': name, 'individual': individual})
+    res: list[Any] = select_from_where(['id', 'name', 'owner_user_id', 'active', 'individual'], 'teams', "id = %(id)s OR (name = BINARY %(name)s AND individual = %(individual)s)", {'id': id, 'name': name, 'individual': individual})
     if len(res) == 0:
         return None
     else:
