@@ -34,10 +34,10 @@ def create_test_case(test_case: TestCase | TestCaseRequest, problem_id: int, tok
         else:
             raise HTTPException(status_code=404, detail="Problem does not exist")
 
-def get_test_case(id: int, problem_id: int, token: str = '') -> TestCase | None:
+def get_test_case(id: int, problem_id: int, token: str = '', ignore_token: bool = False) -> TestCase | None:
     problem: Problem | None = get_problem(problem_id, token)
     if problem is not None:
-        if (problem.private == 1 and token != '' and problem.author_user_id == get_and_check_user_by_token(token).id) or problem.private == 0:
+        if (problem.private == 1 and token != '' and (ignore_token or problem.author_user_id == get_and_check_user_by_token(token).id)) or problem.private == 0:
             res: list[Any] = select_from_where(['id', 'problem_id', 'input', 'solution', 'score', 'opened'], 'test_cases', "id = %(id)s", {'id': id})
             if len(res) == 0:
                 return None
@@ -46,27 +46,27 @@ def get_test_case(id: int, problem_id: int, token: str = '') -> TestCase | None:
                 if test_case.opened == 1:
                     return test_case
                 else:
-                    if token != '' and problem.author_user_id == get_and_check_user_by_token(token).id:
+                    if token != '' and (ignore_token or problem.author_user_id == get_and_check_user_by_token(token).id):
                         return test_case
                     elif token == '':
                         raise HTTPException(status_code=403, detail="Test case is closed, pass the token please")
-                    elif problem.author_user_id != get_and_check_user_by_token(token).id:
-                        raise HTTPException(status_code=403, detail="You are not the author of this cloesed test case")
+                    elif not ignore_token and problem.author_user_id != get_and_check_user_by_token(token).id:
+                        raise HTTPException(status_code=403, detail="You are not the author of this closed test case")
                     else:
                         raise HTTPException(status_code=500, detail="Internal Server Error")
         elif token == '':
             raise HTTPException(status_code=403, detail="Problem is private, pass the token please")
-        elif problem.author_user_id != get_and_check_user_by_token(token).id:
+        elif not ignore_token and problem.author_user_id != get_and_check_user_by_token(token).id:
             raise HTTPException(status_code=403, detail="You are not the author of this private problem")
         else:
             raise HTTPException(status_code=500, detail="Internal Server Error")
     else:
         raise HTTPException(status_code=404, detail="Problem does not exist")
 
-def get_test_cases(problem_id: int, only_opened: bool, only_closed: bool, token: str = '') -> list[TestCase]:
+def get_test_cases(problem_id: int, only_opened: bool, only_closed: bool, token: str = '', ignore_token: bool = False) -> list[TestCase]:
     problem: Problem | None = get_problem(problem_id, token)
     if problem is not None:
-        if (problem.private == 1 and token != '' and problem.author_user_id == get_and_check_user_by_token(token).id) or (problem.private == 0 and not only_opened and token != '' and problem.author_user_id == get_and_check_user_by_token(token).id) or (problem.private == 0 and only_opened):
+        if (problem.private == 1 and token != '' and (ignore_token or problem.author_user_id == get_and_check_user_by_token(token).id)) or (problem.private == 0 and not only_opened and token != '' and (ignore_token or problem.author_user_id == get_and_check_user_by_token(token).id)) or (problem.private == 0 and only_opened):
             conditions: str = ""
             if only_opened:
                 conditions += " AND opened = 1"
@@ -79,11 +79,11 @@ def get_test_cases(problem_id: int, only_opened: bool, only_closed: bool, token:
             return test_cases
         elif problem.private == 1 and token == '':
             raise HTTPException(status_code=403, detail="Problem is private, pass the token please")
-        elif problem.private == 1 and problem.author_user_id != get_and_check_user_by_token(token).id:
+        elif problem.private == 1 and not ignore_token and problem.author_user_id != get_and_check_user_by_token(token).id:
             raise HTTPException(status_code=403, detail="You are not the author of this private problem")
         elif problem.private == 0 and not only_opened and token == '':
             raise HTTPException(status_code=403, detail="You are trying to get not only opened test cases, pass the token please")
-        elif problem.private == 0 and not only_opened and problem.author_user_id != get_and_check_user_by_token(token).id:
+        elif problem.private == 0 and not only_opened and not ignore_token and problem.author_user_id != get_and_check_user_by_token(token).id:
             raise HTTPException(status_code=403, detail="You are not the author of this problem to access not only opened test cases")
         else:
             raise HTTPException(status_code=500, detail="Internal Server Error")

@@ -465,7 +465,7 @@ def check_test_case_process_wrapper(result_queue: Any, *args: ...) -> None:
 
 def check_problem(submission_id: int, problem_id: int, token: str, code: str, language: str) -> None:
     create_files_result: CreateFilesResult = lib.create_files(submission_id, code, language)
-    test_cases: list[TestCase] = get_test_cases_db(problem_id, False, False, token)
+    test_cases: list[TestCase] = get_test_cases_db(problem_id, False, False, token, True)
     correct_score: int = 0
     total_score: int = 0
     total_verdict: tuple[int, str] = (-1, "")
@@ -514,12 +514,16 @@ def check_problem(submission_id: int, problem_id: int, token: str, code: str, la
 @app.post("/submissions")
 def submit(submission: SubmissionRequest, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     if authorization is not None:
-        submission_db_id: int = create_submission_db(submission, authorization)
-        current_websockets[submission_db_id] = CurrentWebsocket(None, None, [])
-        checking_queue.submit(check_problem, submission_db_id, submission.problem_id, authorization, submission.code, f"{submission.language_name} ({submission.language_version})")
-        return JSONResponse({
-            'submission_id': submission_db_id
-        })
+        problem_db: Problem | None = get_problem_db(submission.problem_id)
+        if problem_db is not None:
+            submission_db_id: int = create_submission_db(submission, authorization)
+            current_websockets[submission_db_id] = CurrentWebsocket(None, None, [])
+            checking_queue.submit(check_problem, submission_db_id, submission.problem_id, authorization, submission.code, f"{submission.language_name} ({submission.language_version})")
+            return JSONResponse({
+                'submission_id': submission_db_id
+            })
+        else:
+            raise HTTPException(status_code=404, detail="Problem does not exist")
     else:
         raise HTTPException(status_code=401, detail="Invalid token")
 
@@ -537,7 +541,7 @@ def get_submission(submission_id: int, authorization: Annotated[str | None, Head
                     total_score: int = 0
                     total_verdict: tuple[int, str] = (-1, "")
                     for result in submission_db.results:
-                        test_case_db: TestCase | None = get_test_case_db(result.test_case_id, submission_db.problem_id, authorization)
+                        test_case_db: TestCase | None = get_test_case_db(result.test_case_id, submission_db.problem_id, authorization, True)
                         if test_case_db is not None:
                             verdict_db: Verdict | None = get_verdict_db(result.verdict_id)
                             if verdict_db is not None:
