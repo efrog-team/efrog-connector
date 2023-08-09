@@ -17,7 +17,6 @@ from checker_connection import Library, TestResult, CreateFilesResult
 from asyncio import get_running_loop, AbstractEventLoop, run, Event
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from current_websocket import CurrentWebsocket
-from multiprocessing import Queue, Process
 from typing import Any
 from json import dumps
 
@@ -27,7 +26,6 @@ checker_executor: ProcessPoolExecutor = ProcessPoolExecutor(max_workers=2)
 
 checking_queue: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=4)
 current_websockets: dict[int, CurrentWebsocket] = {}
-processing_queue: Any = Queue()
 
 lib: Library = Library()
 
@@ -473,10 +471,7 @@ def check_problem(submission_id: int, problem_id: int, token: str, code: str, la
     total_verdict: tuple[int, str] = (-1, "")
     for index, test_case in enumerate(test_cases):
         if create_files_result.status == 0:
-            process: Process = Process(target=check_test_case_process_wrapper, args=(processing_queue, submission_id, test_case.id, language, test_case.input, test_case.solution, ))
-            process.start()
-            process.join()
-            test_result: TestResult = processing_queue.get()
+            test_result: TestResult = lib.check_test_case(submission_id, test_case.id, language, test_case.input, test_case.solution)
             if test_result.status == 0:
                 correct_score += test_case.score
         else:
