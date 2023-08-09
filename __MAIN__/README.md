@@ -508,6 +508,8 @@
         * language_version: string
         * time_sent: string (in the form of datetime %Y-%m-%d %H:%M:%S)
         * checked: boolean
+        * compiled: boolean
+        * compilation_details: string
         * correct_score: integer
         * total_score: integer
         * total_verdict: string
@@ -517,7 +519,6 @@
             * test_case_id: integer
             * test_case_score: integer
             * verdict_text: string
-            * verdict_details: string
             * time_taken: integer
             * cpu_time_taken: integer
             * memory_taken: integer
@@ -545,7 +546,6 @@
             * test_case_id: integer
             * test_case_score: integer
             * verdict_text: string
-            * verdict_details: string
             * time_taken: integer
             * cpu_time_taken: integer
             * memory_taken: integer
@@ -553,6 +553,8 @@
     * Type totals:
         * type: string (totals)
         * totals: {
+            * compiled: boolean
+            * compilation_details: string
             * correct_score: integer
             * total_score: integer
             * total_verdict: string

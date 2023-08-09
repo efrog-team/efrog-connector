@@ -11,8 +11,7 @@ class TestResultCTypes(Structure):
     _fields_ = [('status', c_int),
                 ('time', c_int),
                 ('cpu_time', c_int),
-                ('memory', c_int),
-                ('description', c_char_p)]
+                ('memory', c_int)]
 
 class DebugResultCTypes(Structure):
     _fields_ = [('status', c_int),
@@ -28,12 +27,11 @@ class CreateFilesResult:
         self.description = description
 
 class TestResult:
-    def __init__(self, status: int, time: int, cpu_time: int, memory: int, description: str) -> None:
+    def __init__(self, status: int, time: int, cpu_time: int, memory: int) -> None:
         self.status = status
         self.time = time
         self.cpu_time = cpu_time
         self.memory = memory
-        self.description = description
 
 class DebugResult:
     def __init__(self, status: int, time: int, cpu_time: int, memory: int, output: str, description: str) -> None:
@@ -74,7 +72,7 @@ class Library:
 
     def check_test_case(self, submission_id: int, test_case_id: int, language: str, input: str, solution: str) -> TestResult:
         result: Any = self.lib.check_test_case(submission_id, test_case_id, language.encode('utf-8'), input.encode('utf-8'), solution.encode('utf-8')).contents
-        return TestResult(result.status, result.time, result.cpu_time, result.memory, result.description.decode('utf-8'))
+        return TestResult(result.status, result.time, result.cpu_time, result.memory)
 
     def debug(self, debug_submission_id: int, debug_test_id: int, language: str, input: str) -> DebugResult:
         result: Any = self.lib.debug(debug_submission_id, debug_test_id, language.encode('utf-8'), input.encode('utf-8')).contents

@@ -13,7 +13,7 @@ from typing import Any
 
 def create_submission(submission: Submission | SubmissionRequest, token: str = '') -> int:
     if isinstance(submission, Submission):
-        submission_id: int | None = insert_into_values('submissions', ['author_user_id', 'problem_id', 'code', 'language_id', 'time_sent', 'checked'], {'author_user_id': submission.author_user_id, 'problem_id': submission.problem_id, 'code': submission.code, 'language_id': submission.language_id, 'time_sent': submission.time_sent, 'checked': submission.checked})
+        submission_id: int | None = insert_into_values('submissions', ['author_user_id', 'problem_id', 'code', 'language_id', 'time_sent', 'checked', 'compiled', 'compilation_details'], {'author_user_id': submission.author_user_id, 'problem_id': submission.problem_id, 'code': submission.code, 'language_id': submission.language_id, 'time_sent': submission.time_sent, 'checked': submission.checked, 'compiled': submission.compiled, 'compilation_details': submission.compilation_details})
         if submission_id is not None:
             return submission_id
         else:
@@ -25,7 +25,7 @@ def create_submission(submission: Submission | SubmissionRequest, token: str = '
             if problem is not None:
                 author_user_id: int | None = get_and_check_user_by_token(token).id
                 if (problem.private == 1 and problem.author_user_id == author_user_id) or problem.private == 0:
-                    submission_id: int | None = insert_into_values('submissions', ['author_user_id', 'problem_id', 'code', 'language_id', 'time_sent', 'checked'], {'author_user_id': author_user_id, 'problem_id': submission.problem_id, 'code': submission.code, 'language_id': language.id, 'time_sent': datetime.now(), 'checked': 0})
+                    submission_id: int | None = insert_into_values('submissions', ['author_user_id', 'problem_id', 'code', 'language_id', 'time_sent', 'checked', 'compiled', 'compilation_details'], {'author_user_id': author_user_id, 'problem_id': submission.problem_id, 'code': submission.code, 'language_id': language.id, 'time_sent': datetime.now(), 'checked': 0, 'compiled': 0, 'compilation_details': ''})
                     if submission_id is not None:
                         return submission_id
                     else:
@@ -38,11 +38,11 @@ def create_submission(submission: Submission | SubmissionRequest, token: str = '
             raise HTTPException(status_code=404, detail="Language does not exist")
 
 def get_submission(id: int, token: str) -> Submission | None:
-    res: list[Any] = select_from_where(['id', 'author_user_id', 'problem_id', 'code', 'language_id', 'time_sent', 'checked'], 'submissions', "id = %(id)s", {'id': id})
+    res: list[Any] = select_from_where(['id', 'author_user_id', 'problem_id', 'code', 'language_id', 'time_sent', 'checked', 'compiled', 'compilation_details'], 'submissions', "id = %(id)s", {'id': id})
     if len(res) == 0:
         return None
     else:
-        submission: Submission = Submission(id=res[0]['id'], author_user_id=res[0]['author_user_id'], problem_id=res[0]['problem_id'], code=res[0]['code'], language_id=res[0]['language_id'], time_sent=res[0]['time_sent'], checked=res[0]['checked'])
+        submission: Submission = Submission(id=res[0]['id'], author_user_id=res[0]['author_user_id'], problem_id=res[0]['problem_id'], code=res[0]['code'], language_id=res[0]['language_id'], time_sent=res[0]['time_sent'], checked=res[0]['checked'], compiled=res[0]['compiled'], compilation_details=res[0]['compilation_details'])
         if submission.author_user_id == get_and_check_user_by_token(token).id:
             return submission
         else:
@@ -72,6 +72,17 @@ def get_submissions_public_by_user(username: str) -> list[SubmissionPublic]:
     else:
         raise HTTPException(status_code=404, detail="User does not exist")
 
+def mark_submission_compilation(id: int, compiled: bool, compilation_details: str, token: str) -> None:
+    submission: Submission | None = get_submission(id, token)
+    if submission is not None:
+        if submission.author_user_id == get_and_check_user_by_token(token).id:
+            update_set_where('submissions', 'compiled = %(compiled)s', "id = %(id)s", {'compiled': int(compiled), 'id': id})
+            update_set_where('submissions', 'compilation_details = %(compilation_details)s', "id = %(id)s", {'compilation_details': compilation_details, 'id': id})
+        else:
+            raise HTTPException(status_code=403, detail="You are not the author of this submission")
+    else:
+        raise HTTPException(status_code=404, detail="Submission does not exist")
+
 def mark_submission_as_checked(id: int, token: str) -> None:
     submission: Submission | None = get_submission(id, token)
     if submission is not None:
@@ -83,7 +94,7 @@ def mark_submission_as_checked(id: int, token: str) -> None:
         raise HTTPException(status_code=404, detail="Submission does not exist")
 
 def create_submission_result(submission_result: SubmissionResult) -> int:
-    submission_result_id: int | None = insert_into_values('submission_results', ['submission_id', 'test_case_id', 'verdict_id', 'verdict_details', 'time_taken', 'cpu_time_taken', 'memory_taken'], {'submission_id': submission_result.submission_id, 'test_case_id': submission_result.test_case_id, 'verdict_id': submission_result.verdict_id, 'verdict_details': submission_result.verdict_details, 'time_taken': submission_result.time_taken, 'cpu_time_taken': submission_result.cpu_time_taken, 'memory_taken': submission_result.memory_taken})
+    submission_result_id: int | None = insert_into_values('submission_results', ['submission_id', 'test_case_id', 'verdict_id', 'time_taken', 'cpu_time_taken', 'memory_taken'], {'submission_id': submission_result.submission_id, 'test_case_id': submission_result.test_case_id, 'verdict_id': submission_result.verdict_id, 'time_taken': submission_result.time_taken, 'cpu_time_taken': submission_result.cpu_time_taken, 'memory_taken': submission_result.memory_taken})
     if submission_result_id is not None:
         return submission_result_id
     else:
@@ -93,11 +104,11 @@ def get_submission_with_results(id: int, token: str) -> SubmissionWithResults:
     submission: Submission | None = get_submission(id, token)
     if submission is not None:
         if submission.author_user_id == get_and_check_user_by_token(token).id:
-            res: list[Any] = select_from_where(['id', 'submission_id', 'test_case_id', 'verdict_id', 'verdict_details', 'time_taken', 'cpu_time_taken', 'memory_taken'], 'submission_results', "submission_id = %(submission_id)s", {'submission_id': submission.id})
+            res: list[Any] = select_from_where(['id', 'submission_id', 'test_case_id', 'verdict_id', 'time_taken', 'cpu_time_taken', 'memory_taken'], 'submission_results', "submission_id = %(submission_id)s", {'submission_id': submission.id})
             results: list[SubmissionResult] = []
             for result in res:
-                results.append(SubmissionResult(id=result['id'], submission_id=result['submission_id'], test_case_id=result['test_case_id'], verdict_id=result['verdict_id'], verdict_details=result['verdict_details'], time_taken=result['time_taken'], cpu_time_taken=result['cpu_time_taken'], memory_taken=result['memory_taken']))
-            return SubmissionWithResults(id=submission.id, author_user_id=submission.author_user_id, problem_id=submission.problem_id, code=submission.code, language_id=submission.language_id, time_sent=submission.time_sent, checked=submission.checked, results=results)
+                results.append(SubmissionResult(id=result['id'], submission_id=result['submission_id'], test_case_id=result['test_case_id'], verdict_id=result['verdict_id'], time_taken=result['time_taken'], cpu_time_taken=result['cpu_time_taken'], memory_taken=result['memory_taken']))
+            return SubmissionWithResults(id=submission.id, author_user_id=submission.author_user_id, problem_id=submission.problem_id, code=submission.code, language_id=submission.language_id, time_sent=submission.time_sent, checked=submission.checked, compiled=submission.compiled, compilation_details=submission.compilation_details, results=results)
         else:
             raise HTTPException(status_code=403, detail="You are not the author of the submission")
     else:

@@ -6,7 +6,7 @@ from database.users_teams_members import create_team as create_team_db, get_team
 from database.users_teams_members import create_team_member as create_team_member_db, get_team_member_by_names as get_team_member_by_names_db, get_team_members_by_team_name as get_team_members_db, make_coach_contestant as make_coach_contestant_db, confirm_team_member as confirm_team_member_db, decline_team_member as decline_team_member_db, delete_team_member as delete_team_member_db
 from database.problems import create_problem as create_problem_db, get_problem as get_problem_db, get_problems_by_author as get_problems_by_author_db, make_problem_public_private as make_problem_public_private_db, check_if_problem_can_be_edited as check_if_problem_can_be_edited_db, update_problem as update_problem_db, delete_problem as delete_problem_db
 from database.test_cases import create_test_case as create_test_case_db, get_test_case as get_test_case_db, get_test_cases as get_test_cases_db, make_test_case_opened_closed as make_test_case_opened_closed_db, update_test_case as update_test_case_db, delete_test_case as delete_test_case_db
-from database.submissions_results import create_submission as create_submission_db, mark_submission_as_checked as mark_submission_as_checked_db, create_submission_result as create_submission_result_db, get_submission_with_results as get_submission_with_results_db, get_submissions_public_by_user as get_submissions_public_by_user, get_submission_public as get_submission_public_db
+from database.submissions_results import create_submission as create_submission_db, mark_submission_compilation as mark_submission_compilation_db, mark_submission_as_checked as mark_submission_as_checked_db, create_submission_result as create_submission_result_db, get_submission_with_results as get_submission_with_results_db, get_submissions_public_by_user as get_submissions_public_by_user, get_submission_public as get_submission_public_db
 from database.languages import get_language_by_id as get_language_by_id_db
 from database.verdicts import get_verdict as get_verdict_db
 from models import User, UserRequest, UserToken, UserRequestUpdate, Team, TeamRequest, TeamRequestUpdate, TeamMember, TeamMemberRequest, Problem, ProblemRequest, ProblemRequestUpdate, TestCase, TestCaseRequest, TestCaseRequestUpdate, SubmissionPublic, SubmissionRequest, SubmissionResult, SubmissionWithResults, Language, Verdict
@@ -465,6 +465,10 @@ def check_test_case_process_wrapper(result_queue: Any, *args: ...) -> None:
 
 def check_problem(submission_id: int, problem_id: int, token: str, code: str, language: str) -> None:
     create_files_result: CreateFilesResult = lib.create_files(submission_id, code, language)
+    if create_files_result.status == 0:
+        mark_submission_compilation_db(submission_id, True, "", token)
+    else:
+        mark_submission_compilation_db(submission_id, False, create_files_result.description, token)
     test_cases: list[TestCase] = get_test_cases_db(problem_id, False, False, token, True)
     correct_score: int = 0
     total_score: int = 0
@@ -475,19 +479,18 @@ def check_problem(submission_id: int, problem_id: int, token: str, code: str, la
             if test_result.status == 0:
                 correct_score += test_case.score
         else:
-            test_result: TestResult = TestResult(status=create_files_result.status, time=0, cpu_time=0, memory=0, description=create_files_result.description)
+            test_result: TestResult = TestResult(status=create_files_result.status, time=0, cpu_time=0, memory=0)
         verdict: Verdict | None = get_verdict_db(test_result.status + 1)
         if verdict is not None:
             run(current_websockets[submission_id].send_message(dumps({
                 'type': 'result',
                 'count': index + 1,
                 'result': {
-                    'id': create_submission_result_db(SubmissionResult(id=-1, submission_id=submission_id, test_case_id=test_case.id, verdict_id=test_result.status+1, verdict_details=test_result.description, time_taken=test_result.time, cpu_time_taken=test_result.cpu_time, memory_taken=test_result.memory)),
+                    'id': create_submission_result_db(SubmissionResult(id=-1, submission_id=submission_id, test_case_id=test_case.id, verdict_id=test_result.status+1, time_taken=test_result.time, cpu_time_taken=test_result.cpu_time, memory_taken=test_result.memory)),
                     'submission_id': submission_id,
                     'test_case_id': test_case.id,
                     'test_case_score': test_case.score,
                     'verdict_text': verdict.text,
-                    'verdict_details': test_result.description,
                     'time_taken': test_result.time,
                     'cpu_time_taken': test_result.cpu_time,
                     'memory_taken': test_result.memory
@@ -496,10 +499,12 @@ def check_problem(submission_id: int, problem_id: int, token: str, code: str, la
         else:
             raise(HTTPException(status_code=404, detail="Verdict does not exist"))
         total_score += test_case.score
-        total_verdict = (test_result.status, test_result.description)
+        total_verdict = max(total_verdict, (test_result.status, verdict.text))
     run(current_websockets[submission_id].send_message(dumps({
         'type': 'totals',
         'totals': {
+            'compiled': create_files_result.status == 0,
+            'compilation_details': create_files_result.description,
             'correct_score': correct_score,
             'total_score': total_score,
             'total_verdict': total_verdict[1]
@@ -551,7 +556,6 @@ def get_submission(submission_id: int, authorization: Annotated[str | None, Head
                                     'test_case_id': result.test_case_id,
                                     'test_case_score': test_case_db.score,
                                     'verdict_text': verdict_db.text,
-                                    'verdict_details': result.verdict_details,
                                     'time_taken': result.time_taken,
                                     'cpu_time_taken': result.cpu_time_taken,
                                     'memory_taken': result.memory_taken
@@ -573,6 +577,8 @@ def get_submission(submission_id: int, authorization: Annotated[str | None, Head
                         'language_version': language_db.version,
                         'time_sent': submission_db.time_sent.strftime('%Y-%m-%d %H:%M:%S'),
                         'checked': bool(submission_db.checked),
+                        'compiled': bool(submission_db.compiled),
+                        'compilation_details': submission_db.compilation_details,
                         'correct_score': correct_score,
                         'total_score': total_score,
                         'total_verdict': total_verdict[1],
