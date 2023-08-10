@@ -72,6 +72,23 @@ def get_submissions_public_by_user(username: str) -> list[SubmissionPublic]:
     else:
         raise HTTPException(status_code=404, detail="User does not exist")
 
+def get_submissions_public_by_user_and_problem(username: str, problem_id: int) -> list[SubmissionPublic]:
+    user: User | None = get_user(username=username)
+    if user is not None:
+        problem: Problem | None = get_problem(problem_id)
+        if problem is not None:
+            res: list[Any] = select_from_where(['id', 'author_user_id', 'problem_id', 'language_id', 'time_sent'], 'submissions', "author_user_id = %(user_id)s AND problem_id = %(problem_id)s AND checked = 1", {'user_id': user.id, 'problem_id': problem.id})
+            submissions: list[SubmissionPublic] = []
+            for submission in res:
+                verdict_res: list[Any] = select_from_where(['MAX(verdict_id) AS total_verdict_id'], 'submission_results', "submission_id = %(submission_id)s", {'submission_id': submission['id']})
+                if len(verdict_res) != 0:
+                    submissions.append(SubmissionPublic(id=submission['id'], author_user_id=submission['author_user_id'], problem_id=submission['problem_id'], language_id=submission['language_id'], time_sent=submission['time_sent'], total_verdict_id=verdict_res[0]['total_verdict_id']))
+            return submissions
+        else:
+            raise HTTPException(status_code=404, detail="Problem does not exist")
+    else:
+        raise HTTPException(status_code=404, detail="User does not exist")
+
 def mark_submission_compilation(id: int, compiled: bool, compilation_details: str, token: str) -> None:
     submission: Submission | None = get_submission(id, token)
     if submission is not None:

@@ -106,13 +106,13 @@ def make_test_case_opened_closed(id: int, problem_id: int, opened: int, token: s
         raise HTTPException(status_code=404, detail="Problem does not exist")
 
 def update_test_case(id: int, problem_id: int, test_case_update: TestCaseRequestUpdate, token: str) -> None:
-    problem_db: Problem | None = get_problem(problem_id, token)
-    if problem_db is not None:
+    problem: Problem | None = get_problem(problem_id, token)
+    if problem is not None:
         if check_if_problem_can_be_edited(problem_id, token):
-            test_case_db: TestCase | None = get_test_case(id, problem_db.id, token)
-            if test_case_db is not None:
+            test_case: TestCase | None = get_test_case(id, problem.id, token)
+            if test_case is not None:
                 author_user_id: int | None = get_and_check_user_by_token(token).id
-                if problem_db.author_user_id == author_user_id:
+                if problem.author_user_id == author_user_id:
                     if test_case_update.input is not None and test_case_update.input != '':
                         update_set_where('test_cases', "input = %(test_case_update_input)s", "id = %(id)s", {'test_case_update_input': test_case_update.input, 'id': id})
                     if test_case_update.solution is not None and test_case_update.solution != '':

@@ -6,7 +6,7 @@ from database.users_teams_members import create_team as create_team_db, get_team
 from database.users_teams_members import create_team_member as create_team_member_db, get_team_member_by_names as get_team_member_by_names_db, get_team_members_by_team_name as get_team_members_db, make_coach_contestant as make_coach_contestant_db, confirm_team_member as confirm_team_member_db, decline_team_member as decline_team_member_db, delete_team_member as delete_team_member_db
 from database.problems import create_problem as create_problem_db, get_problem as get_problem_db, get_problems_by_author as get_problems_by_author_db, make_problem_public_private as make_problem_public_private_db, check_if_problem_can_be_edited as check_if_problem_can_be_edited_db, update_problem as update_problem_db, delete_problem as delete_problem_db
 from database.test_cases import create_test_case as create_test_case_db, get_test_case as get_test_case_db, get_test_cases as get_test_cases_db, make_test_case_opened_closed as make_test_case_opened_closed_db, update_test_case as update_test_case_db, delete_test_case as delete_test_case_db
-from database.submissions_results import create_submission as create_submission_db, mark_submission_compilation as mark_submission_compilation_db, mark_submission_as_checked as mark_submission_as_checked_db, create_submission_result as create_submission_result_db, get_submission_with_results as get_submission_with_results_db, get_submissions_public_by_user as get_submissions_public_by_user, get_submission_public as get_submission_public_db
+from database.submissions_results import create_submission as create_submission_db, mark_submission_compilation as mark_submission_compilation_db, mark_submission_as_checked as mark_submission_as_checked_db, create_submission_result as create_submission_result_db, get_submission_with_results as get_submission_with_results_db, get_submissions_public_by_user as get_submissions_public_by_user_db, get_submissions_public_by_user_and_problem as get_submissions_public_by_user_and_problem_db, get_submission_public as get_submission_public_db
 from database.languages import get_language_by_id as get_language_by_id_db
 from database.verdicts import get_verdict as get_verdict_db
 from models import User, UserRequest, UserToken, UserRequestUpdate, Team, TeamRequest, TeamRequestUpdate, TeamMember, TeamMemberRequest, Problem, ProblemRequest, ProblemRequestUpdate, TestCase, TestCaseRequest, TestCaseRequestUpdate, SubmissionPublic, SubmissionRequest, SubmissionResult, SubmissionWithResults, Language, Verdict
@@ -97,25 +97,25 @@ def post_token(user: UserToken) -> JSONResponse:
 @app.get("/users/me")
 def get_user_me(authorization: Annotated[str | None, Header()]) -> JSONResponse:
     if authorization is not None:
-        user_db: User | None = get_user_by_token_db(authorization)
+        user: User | None = get_user_by_token_db(authorization)
         return JSONResponse({
-            'username': user_db.username,
-            'email': user_db.email,
-            'name': user_db.name
+            'username': user.username,
+            'email': user.email,
+            'name': user.name
         })
     else:
         raise HTTPException(status_code=401, detail="Invalid token")
 
 @app.get("/users/{username}")
 def get_user(username: str) -> JSONResponse:  
-    user_db: User | None = get_user_db(username=username)
-    if user_db is None:
+    user: User | None = get_user_db(username=username)
+    if user is None:
         raise HTTPException(status_code=404, detail="User does not exist")
     else:
         return JSONResponse({
-            'username': user_db.username,
-            'email': user_db.email,
-            'name': user_db.name
+            'username': user.username,
+            'email': user.email,
+            'name': user.name
         })
 
 @app.put("/users/{username}")
@@ -136,14 +136,14 @@ def post_team(team: TeamRequest, authorization: Annotated[str | None, Header()])
 
 @app.get("/teams/{team_name}")
 def get_team(team_name: str) -> JSONResponse:
-    team_db: Team | None = get_team_db(name=team_name, individual=0)
-    if team_db is not None:
-        owner_db: User | None = get_user_db(id=team_db.owner_user_id)
-        if owner_db is not None:
+    team: Team | None = get_team_db(name=team_name, individual=0)
+    if team is not None:
+        owner: User | None = get_user_db(id=team.owner_user_id)
+        if owner is not None:
             return JSONResponse({
-                'name': team_db.name,
-                'owner_username': owner_db.username,
-                'active': bool(team_db.active)
+                'name': team.name,
+                'owner_username': owner.username,
+                'active': bool(team.active)
             })
         else:
             raise HTTPException(status_code=404, detail="Owner does not exist")
@@ -215,10 +215,10 @@ def post_team_member(team_member: TeamMemberRequest, team_name: str, authorizati
 def get_team_members(team_name: str, only_coaches: bool = False, only_contestants: bool = False, only_confirmed: bool = False, only_unconfirmed: bool = False, only_declined: bool = False, only_undeclined: bool = False) -> JSONResponse:
     res: list[dict[str, str | int]] = []
     for team_member in get_team_members_db(team_name, only_coaches, only_contestants, only_confirmed, only_unconfirmed, only_declined, only_undeclined):
-        member_db: User | None = get_user_db(id=team_member.member_user_id)
-        if member_db is not None:
+        member: User | None = get_user_db(id=team_member.member_user_id)
+        if member is not None:
             res.append({
-                'member_username': member_db.username,
+                'member_username': member.username,
                 'team_name': team_name,
                 'coach': bool(team_member.coach),
                 'confirmed': bool(team_member.confirmed),
@@ -232,14 +232,14 @@ def get_team_members(team_name: str, only_coaches: bool = False, only_contestant
 
 @app.get("/teams/{team_name}/members/{member_username}")
 def get_team_member(team_name: str, member_username: str) -> JSONResponse:
-    team_member_db: TeamMember | None = get_team_member_by_names_db(member_username, team_name)
-    if team_member_db is not None:
+    team_member: TeamMember | None = get_team_member_by_names_db(member_username, team_name)
+    if team_member is not None:
         return JSONResponse({
             'member_username': member_username, 
             'team_name': team_name,
-            'coach': bool(team_member_db.coach),
-            'confirmed': bool(team_member_db.confirmed),
-            'declined': bool(team_member_db.declined)
+            'coach': bool(team_member.coach),
+            'confirmed': bool(team_member.confirmed),
+            'declined': bool(team_member.declined)
         })
     else:
         raise HTTPException(status_code=404, detail="Team member does not exist")
@@ -295,23 +295,23 @@ def post_problem(problem: ProblemRequest, authorization: Annotated[str | None, H
 
 @app.get("/problems/{problem_id}")
 def get_problem(problem_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    problem_db: Problem | None = get_problem_db(problem_id, authorization if authorization is not None else '')
-    if problem_db is None:
+    problem: Problem | None = get_problem_db(problem_id, authorization if authorization is not None else '')
+    if problem is None:
         raise HTTPException(status_code=404, detail="Problem does not exist")
     else:
-        author_db: User | None = get_user_db(id=problem_db.author_user_id)
-        if author_db is not None:
+        author: User | None = get_user_db(id=problem.author_user_id)
+        if author is not None:
             return JSONResponse({
-                'id': problem_db.id,
-                'author_user_username': author_db.username,
-                'name': problem_db.name,
-                'statement': problem_db.statement,
-                'input_statement': problem_db.input_statement,
-                'output_statement': problem_db.output_statement,
-                'notes': problem_db.notes,
-                'time_restriction': problem_db.time_restriction,
-                'memory_restriction': problem_db.memory_restriction,
-                'private': bool(problem_db.private)
+                'id': problem.id,
+                'author_user_username': author.username,
+                'name': problem.name,
+                'statement': problem.statement,
+                'input_statement': problem.input_statement,
+                'output_statement': problem.output_statement,
+                'notes': problem.notes,
+                'time_restriction': problem.time_restriction,
+                'memory_restriction': problem.memory_restriction,
+                'private': bool(problem.private)
             })
         else:
             raise HTTPException(status_code=404, detail="Author of the problem does not exist")
@@ -394,19 +394,19 @@ def post_test_case(problem_id: int, test_case: TestCaseRequest, authorization: A
 @app.get("/problems/{problem_id}/test-cases/{test_case_id}")
 def get_test_case(problem_id: int, test_case_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     if authorization is not None:
-        test_case_db: TestCase | None = get_test_case_db(test_case_id, problem_id, authorization)
+        test_case: TestCase | None = get_test_case_db(test_case_id, problem_id, authorization)
     else:
         raise HTTPException(status_code=401, detail="Invalid token")
-    if test_case_db is None:
+    if test_case is None:
         raise HTTPException(status_code=404, detail="Test case does not exist")
     else:
         return JSONResponse({
-            'id': test_case_db.id,
-            'problem_id': test_case_db.problem_id,
-            'input': test_case_db.input,
-            'solution': test_case_db.solution,
-            'score': test_case_db.score,
-            'opened': bool(test_case_db.opened)
+            'id': test_case.id,
+            'problem_id': test_case.problem_id,
+            'input': test_case.input,
+            'solution': test_case.solution,
+            'score': test_case.score,
+            'opened': bool(test_case.opened)
         })
 
 @app.get("/problems/{problem_id}/test-cases")
@@ -519,8 +519,8 @@ def check_problem(submission_id: int, problem_id: int, token: str, code: str, la
 @app.post("/submissions")
 def submit(submission: SubmissionRequest, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     if authorization is not None:
-        problem_db: Problem | None = get_problem_db(submission.problem_id)
-        if problem_db is not None:
+        problem: Problem | None = get_problem_db(submission.problem_id)
+        if problem is not None:
             submission_db_id: int = create_submission_db(submission, authorization)
             current_websockets[submission_db_id] = CurrentWebsocket(None, None, [])
             checking_queue.submit(check_problem, submission_db_id, submission.problem_id, authorization, submission.code, f"{submission.language_name} ({submission.language_version})")
@@ -535,69 +535,75 @@ def submit(submission: SubmissionRequest, authorization: Annotated[str | None, H
 @app.get("/submissions/{submission_id}")
 def get_submission(submission_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     if authorization is not None:
-        submission_db: SubmissionWithResults = get_submission_with_results_db(submission_id, authorization)
-        user_db: User | None = get_user_db(submission_db.author_user_id)
-        if user_db is not None:
-            language_db: Language | None = get_language_by_id_db(submission_db.language_id)
-            if language_db is not None:
-                if submission_db.checked:
-                    results: list[dict[str, str | int]] = []
-                    correct_score: int = 0
-                    total_score: int = 0
-                    total_verdict: tuple[int, str] = (-1, "")
-                    for result in submission_db.results:
-                        test_case_db: TestCase | None = get_test_case_db(result.test_case_id, submission_db.problem_id, authorization, True)
-                        if test_case_db is not None:
-                            verdict_db: Verdict | None = get_verdict_db(result.verdict_id)
-                            if verdict_db is not None:
-                                results.append({
-                                    'id': result.id,
-                                    'submission_id': result.submission_id,
-                                    'test_case_id': result.test_case_id,
-                                    'test_case_score': test_case_db.score,
-                                    'verdict_text': verdict_db.text,
-                                    'time_taken': result.time_taken,
-                                    'cpu_time_taken': result.cpu_time_taken,
-                                    'memory_taken': result.memory_taken
-                                })
-                                if verdict_db.id == 1:
-                                    correct_score += test_case_db.score
-                                total_score += test_case_db.score
-                                total_verdict = max(total_verdict, (verdict_db.id, verdict_db.text))
+        submission: SubmissionWithResults = get_submission_with_results_db(submission_id, authorization)
+        user: User | None = get_user_db(submission.author_user_id)
+        if user is not None:
+            problem: Problem | None = get_problem_db(submission.problem_id)
+            if problem is not None:
+                language: Language | None = get_language_by_id_db(submission.language_id)
+                if language is not None:
+                    if submission.checked:
+                        results: list[dict[str, str | int]] = []
+                        correct_score: int = 0
+                        total_score: int = 0
+                        total_verdict: tuple[int, str] = (-1, "")
+                        for result in submission.results:
+                            test_case: TestCase | None = get_test_case_db(result.test_case_id, submission.problem_id, authorization, True)
+                            if test_case is not None:
+                                verdict: Verdict | None = get_verdict_db(result.verdict_id)
+                                if verdict is not None:
+                                    results.append({
+                                        'id': result.id,
+                                        'submission_id': result.submission_id,
+                                        'test_case_id': result.test_case_id,
+                                        'test_case_score': test_case.score,
+                                        'verdict_text': verdict.text,
+                                        'time_taken': result.time_taken,
+                                        'cpu_time_taken': result.cpu_time_taken,
+                                        'memory_taken': result.memory_taken
+                                    })
+                                    if verdict.id == 1:
+                                        correct_score += test_case.score
+                                    total_score += test_case.score
+                                    total_verdict = max(total_verdict, (verdict.id, verdict.text))
+                                else:
+                                    raise HTTPException(status_code=404, detail="Verdict does not exist")
                             else:
-                                raise HTTPException(status_code=404, detail="Verdict does not exist")
-                        else:
-                            raise HTTPException(status_code=404, detail="Test case does not exist")
-                    return JSONResponse({
-                        'id': submission_db.id,
-                        'author_user_username': user_db.username,
-                        'problem_id': submission_db.problem_id,
-                        'code': submission_db.code,
-                        'language_name': language_db.name,
-                        'language_version': language_db.version,
-                        'time_sent': submission_db.time_sent.strftime('%Y-%m-%d %H:%M:%S'),
-                        'checked': bool(submission_db.checked),
-                        'compiled': bool(submission_db.compiled),
-                        'compilation_details': submission_db.compilation_details,
-                        'correct_score': correct_score,
-                        'total_score': total_score,
-                        'total_verdict': total_verdict[1],
-                        'results': results
-                    })
+                                raise HTTPException(status_code=404, detail="Test case does not exist")
+                        return JSONResponse({
+                            'id': submission.id,
+                            'author_user_username': user.username,
+                            'problem_id': problem.id,
+                            'problem_name': problem.name,
+                            'code': submission.code,
+                            'language_name': language.name,
+                            'language_version': language.version,
+                            'time_sent': submission.time_sent.strftime('%Y-%m-%d %H:%M:%S'),
+                            'checked': bool(submission.checked),
+                            'compiled': bool(submission.compiled),
+                            'compilation_details': submission.compilation_details,
+                            'correct_score': correct_score,
+                            'total_score': total_score,
+                            'total_verdict': total_verdict[1],
+                            'results': results
+                        })
+                    else:
+                        return JSONResponse({
+                            'id': submission.id,
+                            'author_user_username': user.username,
+                            'problem_id': problem.id,
+                            'problem_name': problem.name,
+                            'code': submission.code,
+                            'language_name': language.name,
+                            'language_version': language.version,
+                            'time_sent': submission.time_sent.strftime('%Y-%m-%d %H:%M:%S'),
+                            'checked': bool(submission.checked),
+                            'realime_link': f"ws://localhost:8000/submissions/{submission_id}/realtime"
+                        }, status_code=202)
                 else:
-                    return JSONResponse({
-                        'id': submission_db.id,
-                        'author_user_username': user_db.username,
-                        'problem_id': submission_db.problem_id,
-                        'code': submission_db.code,
-                        'language_name': language_db.name,
-                        'language_version': language_db.version,
-                        'time_sent': submission_db.time_sent.strftime('%Y-%m-%d %H:%M:%S'),
-                        'checked': bool(submission_db.checked),
-                        'realime_link': f"ws://localhost:8000/submissions/{submission_id}/realtime"
-                    }, status_code=202)
+                    raise HTTPException(status_code=404, detail="Language does not exist")
             else:
-                raise HTTPException(status_code=404, detail="Language does not exist")
+                raise HTTPException(status_code=404, detail="Problem does not exist")
         else:
             raise HTTPException(status_code=404, detail="User does not exist")
     else:
@@ -662,39 +668,66 @@ def get_submission_public(submission_id: int)-> JSONResponse:
         raise HTTPException(status_code=404, detail="Submission does not exist")
 
 @app.get("/users/{username}/submissions/public")
-def get_submissions(username: str)-> JSONResponse:
-    user_db: User | None = get_user_db(username=username)
-    if user_db is not None:
-        res: list[dict[str, str | int]] = []
-        submissions: list[SubmissionPublic] = get_submissions_public_by_user(username)
-        for submission in submissions:
-            problem_db: Problem | None = get_problem_db(submission.problem_id)
-            if problem_db is not None:
-                language_db: Language | None = get_language_by_id_db(submission.language_id)
-                if language_db is not None:
-                    verdict_db: Verdict | None = get_verdict_db(submission.total_verdict_id)
-                    if verdict_db is not None:
-                        res.append({
-                            'id': submission.id,
-                            'author_user_username': user_db.username,
-                            'problem_id': problem_db.id,
-                            'problem_name': problem_db.name,
-                            'language_name': language_db.name,
-                            'language_version': language_db.version,
-                            'time_sent': submission.time_sent.strftime('%Y-%m-%d %H:%M:%S'),
-                            'total_verdict': verdict_db.text
-                        })
-                    else:
-                        raise HTTPException(status_code=404, detail="Verdict does not exist")
+def get_submissions_public_by_user(username: str)-> JSONResponse:
+    res: list[dict[str, str | int]] = []
+    submissions: list[SubmissionPublic] = get_submissions_public_by_user_db(username)
+    for submission in submissions:
+        problem: Problem | None = get_problem_db(submission.problem_id)
+        if problem is not None:
+            language: Language | None = get_language_by_id_db(submission.language_id)
+            if language is not None:
+                verdict: Verdict | None = get_verdict_db(submission.total_verdict_id)
+                if verdict is not None:
+                    res.append({
+                        'id': submission.id,
+                        'author_user_username': username,
+                        'problem_id': problem.id,
+                        'problem_name': problem.name,
+                        'language_name': language.name,
+                        'language_version': language.version,
+                        'time_sent': submission.time_sent.strftime('%Y-%m-%d %H:%M:%S'),
+                        'total_verdict': verdict.text
+                    })
                 else:
-                    raise HTTPException(status_code=404, detail="Language does not exist")
+                    raise HTTPException(status_code=404, detail="Verdict does not exist")
             else:
-                raise HTTPException(status_code=404, detail="Problem does not exist")
-        return JSONResponse({
-            'submissions': res
-        })
-    else:
-        raise HTTPException(status_code=404, detail="User does not exist")
+                raise HTTPException(status_code=404, detail="Language does not exist")
+        else:
+            raise HTTPException(status_code=404, detail="Problem does not exist")
+    return JSONResponse({
+        'submissions': res
+    })
+
+@app.get("/users/{username}/submissions/public/problems/{problem_id}")
+def get_submissions_public_by_user_and_problem(username: str, problem_id: int)-> JSONResponse:
+    res: list[dict[str, str | int]] = []
+    submissions: list[SubmissionPublic] = get_submissions_public_by_user_and_problem_db(username, problem_id)
+    for submission in submissions:
+        problem: Problem | None = get_problem_db(submission.problem_id)
+        if problem is not None:
+            language: Language | None = get_language_by_id_db(submission.language_id)
+            if language is not None:
+                verdict: Verdict | None = get_verdict_db(submission.total_verdict_id)
+                if verdict is not None:
+                    res.append({
+                        'id': submission.id,
+                        'author_user_username': username,
+                        'problem_id': problem.id,
+                        'problem_name': problem.name,
+                        'language_name': language.name,
+                        'language_version': language.version,
+                        'time_sent': submission.time_sent.strftime('%Y-%m-%d %H:%M:%S'),
+                        'total_verdict': verdict.text
+                    })
+                else:
+                    raise HTTPException(status_code=404, detail="Verdict does not exist")
+            else:
+                raise HTTPException(status_code=404, detail="Language does not exist")
+        else:
+            raise HTTPException(status_code=404, detail="Problem does not exist")
+    return JSONResponse({
+        'submissions': res
+    })
 
 @app.websocket("/task")
 async def websocket_endpoint(websocket: WebSocket):

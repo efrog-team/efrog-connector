@@ -479,7 +479,7 @@
     * Response body:
         * empty
 
-* ### POST "/submissions" — get a submission
+* ### POST "/submissions" — create a submission
     * Request headers:
         * Authroization: string (access token)
     * Request parameters:
@@ -503,6 +503,7 @@
         * id: integer
         * author_user_username: string
         * problem_id: integer
+        * problem_name: string
         * code: string
         * language_name: string
         * language_version: string
@@ -527,6 +528,7 @@
         * id: integer
         * author_user_username: string
         * problem_id: integer
+        * problem_name: string
         * code: string
         * language_name: string
         * language_version: string
@@ -585,6 +587,26 @@
         * empty
     * Request parameters:
         * username: string
+    * Request body:
+        * empty
+    * Response body:
+        * submissions: array[ {
+            * id: integer
+            * author_user_username: string
+            * problem_id: integer
+            * problem_name: string
+            * language_name: string
+            * language_version: string
+            * time_sent: string (in the form of date %Y-%m-%d %H:%M:%S)
+            * total_verdict: string
+        } ]
+
+* ### GET "/users/{username}/submissions/public/problems/{problem_id}" — get public data about all user's submissions
+    * Request headers:
+        * empty
+    * Request parameters:
+        * username: string
+        * problem_id: integer
     * Request body:
         * empty
     * Response body:
