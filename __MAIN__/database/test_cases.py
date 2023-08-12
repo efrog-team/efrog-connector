@@ -3,7 +3,7 @@ import os
 sys.path.insert(0, os.path.dirname(__file__).replace('\\', '/') + '/../')
 
 from database.mymysql import insert_into_values, select_from_where, select_from_where_order_by, update_set_where, delete_from_where
-from models import TestCase, TestCaseRequest, TestCaseRequestUpdate, Problem
+from models import TestCase, TestCaseRequest, TestCaseRequestUpdate, Problem, ProblemWithTestCases
 from database.users_teams_members import get_and_check_user_by_token
 from database.problems import get_problem, check_if_problem_can_be_edited
 from fastapi import HTTPException
@@ -63,7 +63,7 @@ def get_test_case(id: int, problem_id: int, token: str = '', ignore_token: bool 
     else:
         raise HTTPException(status_code=404, detail="Problem does not exist")
 
-def get_test_cases(problem_id: int, only_opened: bool, only_closed: bool, token: str = '', ignore_token: bool = False) -> list[TestCase]:
+def get_problem_with_test_cases(problem_id: int, only_opened: bool, only_closed: bool, token: str = '', ignore_token: bool = False) -> ProblemWithTestCases:
     problem: Problem | None = get_problem(problem_id, token)
     if problem is not None:
         if (problem.private == 1 and token != '' and (ignore_token or problem.author_user_id == get_and_check_user_by_token(token).id)) or (problem.private == 0 and not only_opened and token != '' and (ignore_token or problem.author_user_id == get_and_check_user_by_token(token).id)) or (problem.private == 0 and only_opened):
@@ -76,7 +76,7 @@ def get_test_cases(problem_id: int, only_opened: bool, only_closed: bool, token:
             test_cases: list[TestCase] = []
             for test_case in res:
                 test_cases.append(TestCase(id=test_case['id'], problem_id=test_case['problem_id'], input=test_case['input'], solution=test_case['solution'], score=test_case['score'], opened=test_case['opened']))
-            return test_cases
+            return ProblemWithTestCases(id=problem.id, author_user_id=problem.author_user_id, name=problem.name, statement=problem.statement, input_statement=problem.input_statement, output_statement=problem.output_statement, notes=problem.notes, time_restriction=problem.time_restriction, memory_restriction=problem.memory_restriction, private=problem.private, test_cases=test_cases)
         elif problem.private == 1 and token == '':
             raise HTTPException(status_code=403, detail="Problem is private, pass the token please")
         elif problem.private == 1 and not ignore_token and problem.author_user_id != get_and_check_user_by_token(token).id:
@@ -89,6 +89,9 @@ def get_test_cases(problem_id: int, only_opened: bool, only_closed: bool, token:
             raise HTTPException(status_code=500, detail="Internal Server Error")
     else:
         raise HTTPException(status_code=404, detail="Problem does not exist")
+
+def get_test_cases(problem_id: int, only_opened: bool, only_closed: bool, token: str = '', ignore_token: bool = False) -> list[TestCase]:
+    return get_problem_with_test_cases(problem_id, only_opened, only_closed, token, ignore_token).test_cases
 
 def make_test_case_opened_closed(id: int, problem_id: int, opened: int, token: str) -> None:
     problem: Problem | None = get_problem(problem_id, token)

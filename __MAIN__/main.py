@@ -5,11 +5,11 @@ from database.users_teams_members import create_user as create_user_db, get_user
 from database.users_teams_members import create_team as create_team_db, get_team as get_team_db, get_teams_by_user as get_teams_by_user_db, update_team as update_team_db, activate_deactivate_team as activate_deactivate_team_db, check_if_team_can_be_deleted as check_if_team_can_be_deleted_db, delete_team as delete_team_db
 from database.users_teams_members import create_team_member as create_team_member_db, get_team_member_by_names as get_team_member_by_names_db, get_team_members_by_team_name as get_team_members_db, make_coach_contestant as make_coach_contestant_db, confirm_team_member as confirm_team_member_db, decline_team_member as decline_team_member_db, delete_team_member as delete_team_member_db
 from database.problems import create_problem as create_problem_db, get_problem as get_problem_db, get_problems_by_author as get_problems_by_author_db, make_problem_public_private as make_problem_public_private_db, check_if_problem_can_be_edited as check_if_problem_can_be_edited_db, update_problem as update_problem_db, delete_problem as delete_problem_db
-from database.test_cases import create_test_case as create_test_case_db, get_test_case as get_test_case_db, get_test_cases as get_test_cases_db, make_test_case_opened_closed as make_test_case_opened_closed_db, update_test_case as update_test_case_db, delete_test_case as delete_test_case_db
+from database.test_cases import create_test_case as create_test_case_db, get_test_case as get_test_case_db, get_problem_with_test_cases as get_problem_with_test_cases_db, get_test_cases as get_test_cases_db, make_test_case_opened_closed as make_test_case_opened_closed_db, update_test_case as update_test_case_db, delete_test_case as delete_test_case_db
 from database.submissions_results import create_submission as create_submission_db, mark_submission_compilation as mark_submission_compilation_db, mark_submission_as_checked as mark_submission_as_checked_db, create_submission_result as create_submission_result_db, get_submission_with_results as get_submission_with_results_db, get_submissions_public_by_user as get_submissions_public_by_user_db, get_submissions_public_by_user_and_problem as get_submissions_public_by_user_and_problem_db, get_submission_public as get_submission_public_db
 from database.languages import get_language_by_id as get_language_by_id_db
 from database.verdicts import get_verdict as get_verdict_db
-from models import User, UserRequest, UserToken, UserRequestUpdate, Team, TeamRequest, TeamRequestUpdate, TeamMember, TeamMemberRequest, Problem, ProblemRequest, ProblemRequestUpdate, TestCase, TestCaseRequest, TestCaseRequestUpdate, SubmissionPublic, SubmissionRequest, SubmissionResult, SubmissionWithResults, Language, Verdict
+from models import User, UserRequest, UserToken, UserRequestUpdate, Team, TeamRequest, TeamRequestUpdate, TeamMember, TeamMemberRequest, Problem, ProblemRequest, ProblemRequestUpdate, ProblemWithTestCases, TestCase, TestCaseRequest, TestCaseRequestUpdate, SubmissionPublic, SubmissionRequest, SubmissionResult, SubmissionWithResults, Language, Verdict
 from security.hash import hash_hex
 from security.jwt import encode_token
 from typing import Annotated
@@ -428,6 +428,40 @@ def get_test_cases(problem_id: int, authorization: Annotated[str | None, Header(
     else:
         raise HTTPException(status_code=401, detail="Invalid token")
 
+@app.get("/problems/{problem_id}/with-test-cases")
+def get_problem_full(problem_id: int, authorization: Annotated[str | None, Header()], only_opened: bool = False, only_closed: bool = False) -> JSONResponse:
+    problem: Problem | None = get_problem_with_test_cases_db(problem_id, only_opened, only_closed, authorization if authorization is not None else '', False)
+    if problem is None:
+        raise HTTPException(status_code=404, detail="Problem does not exist")
+    else:
+        test_cases: list[dict[str, str | int | bool]] = []
+        for test_case in problem.test_cases:
+            test_cases.append({
+                'id': test_case.id,
+                'problem_id': test_case.problem_id,
+                'input': test_case.input,
+                'solution': test_case.solution,
+                'score': test_case.score,
+                'opened': bool(test_case.opened)
+            })
+        author: User | None = get_user_db(id=problem.author_user_id)
+        if author is not None:
+            return JSONResponse({
+                'id': problem.id,
+                'author_user_username': author.username,
+                'name': problem.name,
+                'statement': problem.statement,
+                'input_statement': problem.input_statement,
+                'output_statement': problem.output_statement,
+                'notes': problem.notes,
+                'time_restriction': problem.time_restriction,
+                'memory_restriction': problem.memory_restriction,
+                'private': bool(problem.private),
+                'test_cases': test_cases
+            })
+        else:
+            raise HTTPException(status_code=404, detail="Author of the problem does not exist")
+
 @app.put("/problems/{problem_id}/test-cases/{test_case_id}/make-opened")
 def put_make_test_case_opened(problem_id: int, test_case_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     if authorization is not None:
@@ -469,13 +503,13 @@ def check_problem(submission_id: int, problem_id: int, token: str, code: str, la
         mark_submission_compilation_db(submission_id, True, "", token)
     else:
         mark_submission_compilation_db(submission_id, False, create_files_result.description, token)
-    test_cases: list[TestCase] = get_test_cases_db(problem_id, False, False, token, True)
+    problem: ProblemWithTestCases = get_problem_with_test_cases_db(problem_id, False, False, token, True)
     correct_score: int = 0
     total_score: int = 0
     total_verdict: tuple[int, str] = (-1, "")
-    for index, test_case in enumerate(test_cases):
+    for index, test_case in enumerate(problem.test_cases):
         if create_files_result.status == 0:
-            test_result: TestResult = lib.check_test_case(submission_id, test_case.id, language, test_case.input, test_case.solution)
+            test_result: TestResult = lib.check_test_case(submission_id, test_case.id, language, test_case.input, test_case.solution, problem.time_restriction, problem.memory_restriction)
             if test_result.status == 0:
                 correct_score += test_case.score
         else:
@@ -546,7 +580,7 @@ def get_submission(submission_id: int, authorization: Annotated[str | None, Head
                 language: Language | None = get_language_by_id_db(submission.language_id)
                 if language is not None:
                     if submission.checked:
-                        results: list[dict[str, str | int]] = []
+                        results: list[dict[str, str | int | bool]] = []
                         correct_score: int = 0
                         total_score: int = 0
                         total_verdict: tuple[int, str] = (-1, "")

@@ -54,7 +54,7 @@ class Library:
         lib = CDLL("./checker_main.so")
         lib.create_files.argtypes = [c_int, c_char_p, c_char_p]
         lib.create_files.restype = POINTER(CreateFilesResultCTypes)
-        lib.check_test_case.argtypes = [c_int, c_int, c_char_p, c_char_p, c_char_p]
+        lib.check_test_case.argtypes = [c_int, c_int, c_char_p, c_char_p, c_char_p, c_int, c_int]
         lib.check_test_case.restype = POINTER(TestResultCTypes)
         lib.debug.argtypes = [c_int, c_int, c_char_p, c_char_p]
         lib.debug.restype = POINTER(DebugResultCTypes)
@@ -70,8 +70,8 @@ class Library:
         result: Any = self.lib.create_files(submission_id, code.encode('utf-8'), language.encode('utf-8')).contents
         return CreateFilesResult(result.status, result.description.decode('utf-8'))
 
-    def check_test_case(self, submission_id: int, test_case_id: int, language: str, input: str, solution: str) -> TestResult:
-        result: Any = self.lib.check_test_case(submission_id, test_case_id, language.encode('utf-8'), input.encode('utf-8'), solution.encode('utf-8')).contents
+    def check_test_case(self, submission_id: int, test_case_id: int, language: str, input: str, solution: str, time_limit: int, memory_limit: int) -> TestResult:
+        result: Any = self.lib.check_test_case(submission_id, test_case_id, language.encode('utf-8'), input.encode('utf-8'), solution.encode('utf-8'), time_limit, memory_limit).contents
         return TestResult(result.status, result.time, result.cpu_time, result.memory)
 
     def debug(self, debug_submission_id: int, debug_test_id: int, language: str, input: str) -> DebugResult:

@@ -98,6 +98,9 @@ class TestCaseRequestUpdate(BaseModel):
     solution: str | None
     score: int | None
 
+class ProblemWithTestCases(Problem):
+    test_cases: list[TestCase]
+
 class Submission(BaseModel):
     id: int
     author_user_id: int
