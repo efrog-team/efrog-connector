@@ -151,7 +151,6 @@ INSERT INTO languages (name, version, supported) VALUES ('Node.js', '20.x', 1);
 INSERT INTO languages (name, version, supported) VALUES ('C++ 17', 'g++ 11.2', 1);
 INSERT INTO languages (name, version, supported) VALUES ('C 17', 'gcc 11.2', 1);
 
-INSERT INTO verdicts (text) VALUES ('Unchecked');
 INSERT INTO verdicts (text) VALUES ('Correct Answer');
 INSERT INTO verdicts (text) VALUES ('Wrong Answer');
 INSERT INTO verdicts (text) VALUES ('Time Limit Exceeded');

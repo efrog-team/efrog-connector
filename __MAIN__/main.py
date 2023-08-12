@@ -473,29 +473,21 @@ def check_problem(submission_id: int, problem_id: int, token: str, code: str, la
     correct_score: int = 0
     total_score: int = 0
     total_verdict: tuple[int, str] = (-1, "")
-    opened_correct: bool = True
     for index, test_case in enumerate(test_cases):
         if create_files_result.status == 0:
-            if test_case.opened:
-                test_result: TestResult = lib.check_test_case(submission_id, test_case.id, language, test_case.input, test_case.solution)
-                opened_correct = (test_result.status == 0) and opened_correct
-            else:
-                if opened_correct:
-                    test_result: TestResult = lib.check_test_case(submission_id, test_case.id, language, test_case.input, test_case.solution)
-                else:
-                    test_result: TestResult = TestResult(status=-1, time=0, cpu_time=0, memory=0)
+            test_result: TestResult = lib.check_test_case(submission_id, test_case.id, language, test_case.input, test_case.solution)
             if test_result.status == 0:
                 correct_score += test_case.score
         else:
             test_result: TestResult = TestResult(status=create_files_result.status, time=0, cpu_time=0, memory=0)
-        verdict: Verdict | None = get_verdict_db(test_result.status + 2)
+        verdict: Verdict | None = get_verdict_db(test_result.status + 1)
         if verdict is not None:
             run(current_websockets[submission_id].send_message(dumps({
                 'type': 'result',
                 'status': 200,
                 'count': index + 1,
                 'result': {
-                    'id': create_submission_result_db(SubmissionResult(id=-1, submission_id=submission_id, test_case_id=test_case.id, verdict_id=test_result.status+2, time_taken=test_result.time, cpu_time_taken=test_result.cpu_time, memory_taken=test_result.memory)),
+                    'id': create_submission_result_db(SubmissionResult(id=-1, submission_id=submission_id, test_case_id=test_case.id, verdict_id=test_result.status+1, time_taken=test_result.time, cpu_time_taken=test_result.cpu_time, memory_taken=test_result.memory)),
                     'submission_id': submission_id,
                     'test_case_id': test_case.id,
                     'test_case_score': test_case.score,
