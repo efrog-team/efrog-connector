@@ -542,6 +542,7 @@
         * type: string (result, totals or  message)
     * Type result:
         * type: string (result)
+        * status: 200
         * count: integer
         * result: {
             * id: integer
@@ -556,6 +557,7 @@
         }
     * Type totals:
         * type: string (totals)
+        * status: 200
         * totals: {
             * compiled: boolean
             * compilation_details: string
@@ -565,6 +567,7 @@
         }
     * Type message:
         * type: string (message)
+        * status: 404 (if there is no submission testing with such id) or 409 (if there is already a websocket opened for this submission)
         * message: string
 
 * ### GET "/submissions/{submission_id}/public" — get public data about a submission

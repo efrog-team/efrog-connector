@@ -492,6 +492,7 @@ def check_problem(submission_id: int, problem_id: int, token: str, code: str, la
         if verdict is not None:
             run(current_websockets[submission_id].send_message(dumps({
                 'type': 'result',
+                'status': 200,
                 'count': index + 1,
                 'result': {
                     'id': create_submission_result_db(SubmissionResult(id=-1, submission_id=submission_id, test_case_id=test_case.id, verdict_id=test_result.status+2, time_taken=test_result.time, cpu_time_taken=test_result.cpu_time, memory_taken=test_result.memory)),
@@ -511,6 +512,7 @@ def check_problem(submission_id: int, problem_id: int, token: str, code: str, la
         total_verdict = max(total_verdict, (test_result.status, verdict.text))
     run(current_websockets[submission_id].send_message(dumps({
         'type': 'totals',
+        'status': 200,
         'totals': {
             'compiled': create_files_result.status == 0,
             'compilation_details': create_files_result.description,
@@ -635,11 +637,13 @@ async def websocket_endpoint_submissions(websocket: WebSocket, submission_id: in
         else:
             await websocket.send_text(dumps({
                 'type': 'message',
+                'status': 409,
                 'message': "There is already a websocket opened for this submission"
             }))
     except:
         await websocket.send_text(dumps({
             'type': 'message',
+            'status': 404,
             'message': f"There is no submission testing with such id. Try to access: GET http://localhost:8000/submissions/{submission_id}"
         }))
     await websocket.close()
