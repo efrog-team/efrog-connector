@@ -519,6 +519,7 @@
             * submission_id: integer
             * test_case_id: integer
             * test_case_score: integer
+            * test_case_opened: boolean
             * verdict_text: string
             * time_taken: integer
             * cpu_time_taken: integer
@@ -547,6 +548,7 @@
             * submission_id: integer
             * test_case_id: integer
             * test_case_score: integer
+            * test_case_opened: boolean
             * verdict_text: string
             * time_taken: integer
             * cpu_time_taken: integer
@@ -621,21 +623,12 @@
             * total_verdict: string
         } ]
 
-* ### WS "/task" — temporary websocket request to send a solution on the test problem about the square of the number
-    * First message to the server:
-        * Code for the problem
-    * Second message to the server:
-        * Language
-    * Each message from the server:
-        * Result from the checking system
-
-* ### GET "/test-submit?id={id}&language={language}" — temporary request to send a solution on the test problem about the square of the number and the code checks just one test case
-    * Request headers:
-        * empty
-    * Request parameters:
-        * empty
-    * Request body:
-        * id: integer
-        * language: string
-    * Response body:
-        * "{result_time}ms ({result_cpu_time}ms)" or "Error"
+* ### Possible verdicts (in order of priorities for the total verdict):
+    * Unchecked
+    * Correct Answer
+    * Wrong Answer
+    * Time Limit Exceeded
+    * Memory Limit Exceeded
+    * Runtime Error
+    * Compilation Error
+    * Internal Server Error

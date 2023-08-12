@@ -2,7 +2,7 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(__file__).replace('\\', '/') + '/../')
 
-from database.mymysql import insert_into_values, select_from_where, update_set_where, delete_from_where
+from database.mymysql import insert_into_values, select_from_where, select_from_where_order_by, update_set_where, delete_from_where
 from models import TestCase, TestCaseRequest, TestCaseRequestUpdate, Problem
 from database.users_teams_members import get_and_check_user_by_token
 from database.problems import get_problem, check_if_problem_can_be_edited
@@ -72,7 +72,7 @@ def get_test_cases(problem_id: int, only_opened: bool, only_closed: bool, token:
                 conditions += " AND opened = 1"
             if only_closed:
                 conditions += " AND opened = 0"
-            res: list[Any] = select_from_where(['id', 'problem_id', 'input', 'solution', 'score', 'opened'], 'test_cases', "problem_id = %(problem_id)s" + conditions, {'problem_id': problem_id})
+            res: list[Any] = select_from_where_order_by(['id', 'problem_id', 'input', 'solution', 'score', 'opened'], 'test_cases', "problem_id = %(problem_id)s" + conditions, ['opened DESC', 'id'], {'problem_id': problem_id})
             test_cases: list[TestCase] = []
             for test_case in res:
                 test_cases.append(TestCase(id=test_case['id'], problem_id=test_case['problem_id'], input=test_case['input'], solution=test_case['solution'], score=test_case['score'], opened=test_case['opened']))

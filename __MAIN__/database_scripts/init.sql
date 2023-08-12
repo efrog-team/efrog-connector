@@ -151,10 +151,11 @@ INSERT INTO languages (name, version, supported) VALUES ('Node.js', '20.x', 1);
 INSERT INTO languages (name, version, supported) VALUES ('C++ 17', 'g++ 11.2', 1);
 INSERT INTO languages (name, version, supported) VALUES ('C 17', 'gcc 11.2', 1);
 
+INSERT INTO verdicts (text) VALUES ('Unchecked');
 INSERT INTO verdicts (text) VALUES ('Correct Answer');
 INSERT INTO verdicts (text) VALUES ('Wrong Answer');
-INSERT INTO verdicts (text) VALUES ('Time Limit');
-INSERT INTO verdicts (text) VALUES ('Memory Limit');
+INSERT INTO verdicts (text) VALUES ('Time Limit Exceeded');
+INSERT INTO verdicts (text) VALUES ('Memory Limit Exceeded');
 INSERT INTO verdicts (text) VALUES ('Runtime Error');
 INSERT INTO verdicts (text) VALUES ('Compilation Error');
 INSERT INTO verdicts (text) VALUES ('Internal Server Error');

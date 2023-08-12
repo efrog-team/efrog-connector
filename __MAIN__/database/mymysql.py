@@ -32,6 +32,15 @@ def select_from_where(fields: list[str], table_name: str, condition: str, params
             cursor.execute(f"SELECT {unpack_fields(fields)} FROM {table_name} WHERE {condition}", params)
             return list(cursor.fetchall())
 
+def select_from_where_order_by(fields: list[str], table_name: str, condition: str, order: list[str], params: dict[str, str | int | datetime]) -> list[Any]:
+    connection: MySQLConnectionAbstract
+    with MySQLConnection(**database_config) as connection:
+        connection.autocommit = True
+        cursor: MySQLCursorAbstract
+        with connection.cursor(dictionary=True) as cursor:
+            cursor.execute(f"SELECT {unpack_fields(fields)} FROM {table_name} WHERE {condition} ORDER BY {unpack_fields(order)}", params)
+            return list(cursor.fetchall())
+
 def select_from_inner_join_where(fields: list[str], table_name: str, join_table: str, join_rule: str, condition: str, params: dict[str, str | int | datetime]) -> list[Any]:
     connection: MySQLConnectionAbstract
     with MySQLConnection(**database_config) as connection:
