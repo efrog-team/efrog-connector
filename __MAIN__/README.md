@@ -308,11 +308,12 @@
         * memory_restriction: integer
         * private: boolean
 
-* ### GET "/problems" — get all public problems
+* ### GET "/problems?start={start}&limit={limit}" — get all public problems
     * Request headers:
         * Authroization: string (access token)
     * Request parameters:
-        * username: string
+        * start: integer?
+        * limit: integer?
     * Request body:
         * empty
     * Response body:
