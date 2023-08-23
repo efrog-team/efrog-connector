@@ -516,7 +516,7 @@ def get_problem(problem_id: int, authorization: Annotated[str | None, Header()])
                 problems.private AS private
             FROM problems
             INNER JOIN users ON problems.author_user_id = users.id
-            WHERE id = %(problem_id)s
+            WHERE problems.id = %(problem_id)s
             LIMIT 1
         """, {'problem_id': problem_id})
         problem: Any = cursor.fetchone()
@@ -733,7 +733,7 @@ def get_test_cases(problem_id: int, authorization: Annotated[str | None, Header(
         filter_conditions += " AND opened = 0"
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
-        cursor.execute("SELECT author_user_id, private FROM test_cases WHERE problem_id = %(problem_id)s LIMIT 1", {'problem_id': problem_id})
+        cursor.execute("SELECT author_user_id, private FROM problems WHERE id = %(problem_id)s LIMIT 1", {'problem_id': problem_id})
         problem: Any = cursor.fetchone()
         if problem is None:
             raise HTTPException(status_code=404, detail="Problem does not exist")
@@ -1041,7 +1041,7 @@ def get_submission(submission_id: int, authorization: Annotated[str | None, Head
                     languages.name AS language_name,
                     languages.version AS language_version,
                     submissions.time_sent AS time_sent,
-                    submissions.checked AS checked,
+                    submissions.checked AS checked
                 FROM submissions
                 INNER JOIN users ON submissions.author_user_id = users.id
                 INNER JOIN problems ON submissions.problem_id = problems.id
@@ -1162,7 +1162,7 @@ def get_submissions_public_by_user_and_problem(username: str, problem_id: int)->
             INNER JOIN languages ON submissions.language_id = languages.id
             INNER JOIN verdicts ON submissions.total_verdict_id = verdicts.id
             WHERE users.username = BINARY %(username)s AND problems.id = %(problem_id)s AND submissions.checked = 1
-        """, {'username': username})
+        """, {'username': username, 'problem_id': problem_id})
         return JSONResponse({
             'submissions': cursor.fetchall()
         })
