@@ -4,18 +4,30 @@ sys.path.insert(0, os.path.dirname(__file__).replace('\\', '/') + '/../')
 
 import jwt
 import datetime
-from typing import Any
 from config import config
+from fastapi import HTTPException
+from pydantic import BaseModel
 
-def encode_token(username: str, password: str) -> str:
+def encode_token(id: int, username: str) -> str:
     if config['JWT_SECRET'] is None:
-        return ''
+        raise HTTPException(status_code=500, detail="Internal Server Error")
     else:
-        return jwt.encode({'username': username, 'password': password, 'exp': datetime.datetime.utcnow() + datetime.timedelta(days=365)}, config['JWT_SECRET'], algorithm='HS256')
+        try:
+            return jwt.encode({'id': id, 'username': username, 'exp': datetime.datetime.utcnow() + datetime.timedelta(days=365)}, config['JWT_SECRET'], algorithm='HS256')
+        except:
+            raise HTTPException(status_code=500, detail="Internal Server Error")
 
-def decode_token(token: str) -> dict[str, str | None]:
+class Token(BaseModel):
+    id: int
+    username: str
+
+def decode_token(token: str | None) -> Token:
     if config['JWT_SECRET'] is None:
-        return {'username': None, 'password': None}
-    else:
-        decoded: dict[str, Any] = jwt.decode(token, config['JWT_SECRET'], algorithms=['HS256'])
-        return {'username': decoded['username'], 'password': decoded['password']}
+        raise HTTPException(status_code=401, detail="You didn't provide a token")
+    if token is None or token == '':
+        raise HTTPException(status_code=401, detail="Invalid token")
+    try:
+        decoded_token: dict[str, int | str] = jwt.decode(token, config['JWT_SECRET'], algorithms=['HS256'])
+        return Token(id=int(decoded_token['id']), username=str(decoded_token['username']))
+    except:
+        raise HTTPException(status_code=401, detail="Invalid token")

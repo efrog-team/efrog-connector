@@ -308,12 +308,34 @@
         * memory_restriction: integer
         * private: boolean
 
-* ### GET "/users/{username}/problems?only_public={only_public}" — get all users teams
+* ### GET "/problems" — get all public problems
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * username: string
+    * Request body:
+        * empty
+    * Response body:
+        * problems: array[ {
+            * id: integer
+            * author_user_uisername: string
+            * name: string
+            * statement: string
+            * input_statement: string
+            * output_statement: string
+            * notes: string
+            * time_restriction: integer
+            * memory_restriction: integer
+            * private: boolean
+        } ]
+
+* ### GET "/users/{username}/problems?only_public={only_public}?only_private={only_private}" — get all user's problems
     * Request headers:
         * Authroization: string (access token)
     * Request parameters:
         * username: string
         * only_public: boolean
+        * only_private: boolean
     * Request body:
         * empty
     * Response body:
@@ -424,6 +446,33 @@
     * Request body:
         * empty
     * Response body:
+        * test_cases: array[ {
+            * id: integer
+            * problem_id: integer
+            * input: string
+            * solution: string
+            * score: integer
+            * opened: boolean
+        } ]
+
+* ### GET "/problems/{problem_id}/with-test-cases" — get a problem with test cases
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * username: string
+    * Request body:
+        * empty
+    * Response body:
+        * id: integer
+        * author_user_uisername: string
+        * name: string
+        * statement: string
+        * input_statement: string
+        * output_statement: string
+        * notes: string
+        * time_restriction: integer
+        * memory_restriction: integer
+        * private: boolean
         * test_cases: array[ {
             * id: integer
             * problem_id: integer

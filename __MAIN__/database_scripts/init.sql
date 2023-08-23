@@ -4,21 +4,24 @@ USE db;
 
 CREATE TABLE users (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    username TEXT NOT NULL,
-    email TEXT NOT NULL,
-    name TEXT NOT NULL,
-    password TEXT NOT NULL,
-    PRIMARY KEY (id)
+    username VARCHAR(255)  NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY (username),
+    UNIQUE KEY (email)
 );
 
 CREATE TABLE teams (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    name TEXT NOT NULL,
+    name VARCHAR(255) NOT NULL,
     owner_user_id BIGINT UNSIGNED NOT NULL,
     active BOOLEAN NOT NULL,
     individual BOOLEAN NOT NULL,
     PRIMARY KEY (id),
-    FOREIGN KEY (owner_user_id) REFERENCES users(id)
+    FOREIGN KEY (owner_user_id) REFERENCES users(id),
+    UNIQUE KEY (name)
 );
 
 CREATE TABLE team_members (
@@ -30,7 +33,8 @@ CREATE TABLE team_members (
     declined BOOLEAN NOT NULL,
     PRIMARY KEY (id),
     FOREIGN KEY (member_user_id) REFERENCES users(id),
-    FOREIGN KEY (team_id) REFERENCES teams(id)
+    FOREIGN KEY (team_id) REFERENCES teams(id),
+    UNIQUE KEY (member_user_id, team_id)
 );
 
 CREATE TABLE competitions (
@@ -41,7 +45,7 @@ CREATE TABLE competitions (
     start_time DATETIME NOT NULL,
     end_time DATETIME NOT NULL,
     private BOOLEAN NOT NULL,
-    maximum_team_members_number TINYINT UNSIGNED NOT NULL,
+    maximum_team_members_number INT UNSIGNED NOT NULL,
     PRIMARY KEY (id),
     FOREIGN KEY (author_user_id) REFERENCES users(id)
 );
@@ -99,6 +103,12 @@ CREATE TABLE languages (
     PRIMARY KEY (id)
 );
 
+CREATE TABLE verdicts (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    text TEXT NOT NULL,
+    PRIMARY KEY (id)
+);
+
 CREATE TABLE submissions (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     author_user_id BIGINT UNSIGNED NOT NULL,
@@ -109,10 +119,14 @@ CREATE TABLE submissions (
     checked BOOLEAN NOT NULL,
     compiled BOOLEAN NOT NULL,
     compilation_details TEXT NOT NULL,
+    correct_score INT UNSIGNED NOT NULL,
+    total_score INT UNSIGNED NOT NULL,
+    total_verdict_id BIGINT UNSIGNED NOT NULL,
     PRIMARY KEY (id),
     FOREIGN KEY (author_user_id) REFERENCES users(id),
     FOREIGN KEY (problem_id) REFERENCES problems(id),
-    FOREIGN KEY (language_id) REFERENCES languages(id)
+    FOREIGN KEY (language_id) REFERENCES languages(id),
+    FOREIGN KEY (total_verdict_id) REFERENCES verdicts(id)
 );
 
 CREATE TABLE competition_submissions (
@@ -124,12 +138,6 @@ CREATE TABLE competition_submissions (
     FOREIGN KEY (submission_id) REFERENCES submissions(id),
     FOREIGN KEY (competition_id) REFERENCES competitions(id),
     FOREIGN KEY (team_id) REFERENCES teams(id)
-);
-
-CREATE TABLE verdicts (
-    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    text TEXT NOT NULL,
-    PRIMARY KEY (id)
 );
 
 CREATE TABLE submission_results (
@@ -151,6 +159,7 @@ INSERT INTO languages (name, version, supported) VALUES ('Node.js', '20.x', 1);
 INSERT INTO languages (name, version, supported) VALUES ('C++ 17', 'g++ 11.2', 1);
 INSERT INTO languages (name, version, supported) VALUES ('C 17', 'gcc 11.2', 1);
 
+INSERT INTO verdicts (text) VALUES ('Unchecked');
 INSERT INTO verdicts (text) VALUES ('Correct Answer');
 INSERT INTO verdicts (text) VALUES ('Wrong Answer');
 INSERT INTO verdicts (text) VALUES ('Time Limit Exceeded');

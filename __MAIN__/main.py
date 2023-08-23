@@ -1,42 +1,25 @@
 from fastapi import FastAPI, HTTPException, Header, WebSocket
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from database.users_teams_members import create_user as create_user_db, get_user as get_user_db, get_and_check_user_by_token as get_user_by_token_db, update_user as update_user_db
-from database.users_teams_members import create_team as create_team_db, get_team as get_team_db, get_teams_by_user as get_teams_by_user_db, update_team as update_team_db, activate_deactivate_team as activate_deactivate_team_db, check_if_team_can_be_deleted as check_if_team_can_be_deleted_db, delete_team as delete_team_db
-from database.users_teams_members import create_team_member as create_team_member_db, get_team_member_by_names as get_team_member_by_names_db, get_team_members_by_team_name as get_team_members_db, make_coach_contestant as make_coach_contestant_db, confirm_team_member as confirm_team_member_db, decline_team_member as decline_team_member_db, delete_team_member as delete_team_member_db
-from database.problems import create_problem as create_problem_db, get_problem as get_problem_db, get_problems_by_author as get_problems_by_author_db, make_problem_public_private as make_problem_public_private_db, check_if_problem_can_be_edited as check_if_problem_can_be_edited_db, update_problem as update_problem_db, delete_problem as delete_problem_db
-from database.test_cases import create_test_case as create_test_case_db, get_test_case as get_test_case_db, get_problem_with_test_cases as get_problem_with_test_cases_db, get_test_cases as get_test_cases_db, make_test_case_opened_closed as make_test_case_opened_closed_db, update_test_case as update_test_case_db, delete_test_case as delete_test_case_db
-from database.submissions_results import create_submission as create_submission_db, mark_submission_compilation as mark_submission_compilation_db, mark_submission_as_checked as mark_submission_as_checked_db, create_submission_result as create_submission_result_db, get_submission_with_results as get_submission_with_results_db, get_submissions_public_by_user as get_submissions_public_by_user_db, get_submissions_public_by_user_and_problem as get_submissions_public_by_user_and_problem_db, get_submission_public as get_submission_public_db
-from database.languages import get_language_by_id as get_language_by_id_db
-from database.verdicts import get_verdict as get_verdict_db
-from models import User, UserRequest, UserToken, UserRequestUpdate, Team, TeamRequest, TeamRequestUpdate, TeamMember, TeamMemberRequest, Problem, ProblemRequest, ProblemRequestUpdate, ProblemWithTestCases, TestCase, TestCaseRequest, TestCaseRequestUpdate, SubmissionPublic, SubmissionRequest, SubmissionResult, SubmissionWithResults, Language, Verdict
+from models import UserRequest, UserToken, UserRequestUpdate, TeamRequest, TeamRequestUpdate, TeamMemberRequest, ProblemRequest, ProblemRequestUpdate, TestCaseRequest, TestCaseRequestUpdate, SubmissionRequest
+from mysql.connector.abstracts import MySQLCursorAbstract
+from mysql.connector.errors import IntegrityError
+from config import database_config
+from connection_cursor import ConnectionCursor
 from security.hash import hash_hex
-from security.jwt import encode_token
+from security.jwt import encode_token, Token, decode_token
 from typing import Annotated
 from checker_connection import Library, TestResult, CreateFilesResult
-from asyncio import get_running_loop, AbstractEventLoop, run, Event
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+from asyncio import run, Event
+from concurrent.futures import ThreadPoolExecutor
 from current_websocket import CurrentWebsocket
 from typing import Any
 from json import dumps
-
-loop: AbstractEventLoop = get_running_loop()
-fs_executor: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=1)
-checker_executor: ProcessPoolExecutor = ProcessPoolExecutor(max_workers=2)
 
 checking_queue: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=4)
 current_websockets: dict[int, CurrentWebsocket] = {}
 
 lib: Library = Library()
-
-def create_files_wrapper(*args: ...) -> CreateFilesResult:
-    return lib.create_files(*args)
-
-def check_test_case_wrapper(*args: ...) -> TestResult:
-    return lib.check_test_case(*args)
-
-def delete_files_wrapper(*args: ...) -> int:
-    return lib.delete_files(*args)
 
 app: FastAPI = FastAPI()
 
@@ -56,596 +39,1020 @@ def root() -> JSONResponse:
         'integer': 1,
         'boolean': True,
         'null': None,
-        'array': ['a', 1, True, None, ['a', 1, True, None], {
-            'string': 'a',
-            'integer': 1,
-            'boolean': True,
-            'null': None,
-            'array': ['a', 1, True, None]
-        }],
-        'dictionary': {
-            'string': 'a',
-            'integer': 1,
-            'boolean': True,
-            'null': None,
-            'array': ['a', 1, True, None],
-            'dictionary': {
-                'string': 'a',
-                'integer': 1,
-                'boolean': True,
-                'null': None,
-                'array': ['a', 1, True, None]
-            }
-        }
+        'array': [],
+        'dictionary': {}
     })
 
 @app.post("/users")
 def post_user(user: UserRequest) -> JSONResponse:
-    create_user_db(user)
+    if user.username == "":
+        raise HTTPException(status_code=409, detail="Username is empty")
+    if len(user.username) < 3:
+        raise HTTPException(status_code=409, detail="Username is too short")
+    if user.email == "":
+        raise HTTPException(status_code=409, detail="Email is empty")
+    if user.name == "":
+        raise HTTPException(status_code=409, detail="Name is empty")
+    if user.password == "":
+        raise HTTPException(status_code=409, detail="Password is empty")
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        try:
+            cursor.execute("INSERT INTO users (username, email, name, password) VALUES (%(username)s, %(email)s, %(name)s, %(password)s)", {'username': user.username, 'email': user.email, 'name': user.name, 'password': hash_hex(user.password)})
+        except IntegrityError:
+            raise HTTPException(status_code=409, detail="These username or email are already taken")
+        user_id: int | None = cursor.lastrowid
+        if user_id is None:
+            raise HTTPException(status_code=500, detail="Internal Server Error")
+        cursor.execute("INSERT INTO teams (name, owner_user_id, active, individual) VALUES (%(name)s, %(owner_user_id)s, 1, 1)", {'name': user.username, 'owner_user_id': user_id})
+        team_id: int | None = cursor.lastrowid
+        if team_id is None:
+            raise HTTPException(status_code=500, detail="Internal Server Error")
+        cursor.execute("INSERT INTO team_members (member_user_id, team_id, coach, confirmed, declined) VALUES (%(member_user_id)s, %(team_id)s, 0, 1, 0)", {'member_user_id': user_id, 'team_id': team_id})
     return JSONResponse({})
 
 @app.post("/token")
 def post_token(user: UserToken) -> JSONResponse:
-    user_db: User | None = get_user_db(username=user.username)
-    if user_db is None:
-        raise HTTPException(status_code=401, detail="User does not exist")
-    elif user_db.password == hash_hex(user.password):
-        return JSONResponse({'token': encode_token(user.username, hash_hex(user.password))})
-    else:
-        raise HTTPException(status_code=401, detail="Incorrect password")
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("SELECT id, username, password FROM users WHERE username = BINARY %(username)s LIMIT 1", {'username': user.username})
+        user_db: Any = cursor.fetchone()
+        if user_db is None:
+            raise HTTPException(status_code=401, detail="User does not exist")
+        if user_db['password'] != hash_hex(user.password):
+            raise HTTPException(status_code=401, detail="Incorrect password")
+        return JSONResponse({'token': encode_token(user_db['id'], user_db['username'])})
 
 @app.get("/users/me")
 def get_user_me(authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    if authorization is not None:
-        user: User | None = get_user_by_token_db(authorization)
-        return JSONResponse({
-            'username': user.username,
-            'email': user.email,
-            'name': user.name
-        })
-    else:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("SELECT username, email, name FROM users WHERE id = %(id)s LIMIT 1", {'id':token.id})
+        user: Any = cursor.fetchone()
+        if user is None:
+            raise HTTPException(status_code=404, detail="User from the token does not exist")
+        return JSONResponse(user)
 
 @app.get("/users/{username}")
 def get_user(username: str) -> JSONResponse:  
-    user: User | None = get_user_db(username=username)
-    if user is None:
-        raise HTTPException(status_code=404, detail="User does not exist")
-    else:
-        return JSONResponse({
-            'username': user.username,
-            'email': user.email,
-            'name': user.name
-        })
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("SELECT username, email, name FROM users WHERE username = BINARY %(username)s LIMIT 1", {'username': username})
+        user: Any = cursor.fetchone()
+        if user is None:
+            raise HTTPException(status_code=404, detail="User from the token does not exist")
+        return JSONResponse(user)
 
 @app.put("/users/{username}")
 def put_user(username: str, user: UserRequestUpdate, authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    if authorization is not None:
-        update_user_db(username, user, authorization)
-    else:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    token: Token = decode_token(authorization)
+    if token.username != username:
+        raise HTTPException(status_code=403, detail="You are trying to change not your data")
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("SELECT 1 FROM users WHERE username = BINARY %(username)s LIMIT 1", {'username': username})
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="User does not exist")
+        if user.email is not None and user.email != "":
+            try:
+                cursor.execute("UPDATE users SET email = %(email)s WHERE username = BINARY %(username)s", {'email': user.email, 'username': username})
+            except IntegrityError:
+                raise HTTPException(status_code=409, detail="This email is already taken")
+        if user.name is not None and user.name != "":
+            cursor.execute("UPDATE users SET name = %(name)s WHERE username = BINARY %(username)s", {'name': user.name, 'username': username})
+        if user.password is not None and user.password != "":
+            cursor.execute("UPDATE users SET password = %(password)s WHERE username = BINARY %(username)s", {'password': hash_hex(user.password), 'username': username})
+        if user.username is not None and user.username != "":
+            if len(user.username) < 3:
+                raise HTTPException(status_code=409, detail="Username is too short")
+            try:
+                cursor.execute("UPDATE users SET username = %(new_username)s WHERE username = BINARY %(username)s", {'new_username': user.username, 'username': username})
+            except IntegrityError:
+                raise HTTPException(status_code=409, detail="This username is already taken")
     return JSONResponse({})
+
+def detect_error_teams(cursor: MySQLCursorAbstract, team_name: str, owner_user_id: int, ignore_ownership: bool, ignore_internal_server_error: bool) -> None:
+    cursor.execute("SELECT owner_user_id FROM teams WHERE name = BINARY %(name)s LIMIT 1", {'name': team_name})
+    team: Any = cursor.fetchone()
+    if team is None:
+        raise HTTPException(status_code=404, detail="Team does not exist")
+    if not ignore_ownership or team['owner_user_id'] != owner_user_id:
+        raise HTTPException(status_code=403, detail="You are not the owner of the team")
+    if not ignore_internal_server_error:
+        raise HTTPException(status_code=500, detail="Internal Server Error")
 
 @app.post("/teams")
 def post_team(team: TeamRequest, authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    if authorization is not None:
-        create_team_db(team, authorization)
-    else:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    token: Token = decode_token(authorization)
+    if team.name == "":
+        raise HTTPException(status_code=409, detail="Name is empty")
+    if len(team.name) < 3:
+        raise HTTPException(status_code=409, detail="Name is too short")
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        try:
+            cursor.execute("INSERT INTO teams (name, owner_user_id, active, individual) VALUES (%(name)s, %(owner_user_id)s, 1, 0)", {'name': team.name, 'owner_user_id': token.id})
+        except IntegrityError:
+            raise HTTPException(status_code=409, detail="This name is already taken")
+        team_id: int | None = cursor.lastrowid
+        if team_id is None:
+            raise HTTPException(status_code=500, detail="Internal Server Error")
+        cursor.execute("INSERT INTO team_members (member_user_id, team_id, coach, confirmed, declined) VALUES (%(member_user_id)s, %(team_id)s, 0, 1, 0)", {'member_user_id': token.id, 'team_id': team_id})
     return JSONResponse({})
 
 @app.get("/teams/{team_name}")
 def get_team(team_name: str) -> JSONResponse:
-    team: Team | None = get_team_db(name=team_name, individual=0)
-    if team is not None:
-        owner: User | None = get_user_db(id=team.owner_user_id)
-        if owner is not None:
-            return JSONResponse({
-                'name': team.name,
-                'owner_username': owner.username,
-                'active': bool(team.active)
-            })
-        else:
-            raise HTTPException(status_code=404, detail="Owner does not exist")
-    else:
-        raise HTTPException(status_code=404, detail="Team does not exist")
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("""
+            SELECT 
+                teams.name AS name,
+                users.username AS owner_username,
+                teams.active AS active
+            FROM teams
+            INNER JOIN users ON teams.owner_user_id = users.id
+            WHERE teams.name = BINARY %(name)s
+            LIMIT 1
+            """, {'name': team_name})
+        team: Any = cursor.fetchone()
+        if team is None:
+            raise HTTPException(status_code=404, detail="Team does not exist")
+        return JSONResponse(team)
 
 @app.put("/teams/{team_name}")
 def put_team(team_name: str, team: TeamRequestUpdate, authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    if authorization is not None:
-        update_team_db(team_name, team, authorization)
-    else:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    token: Token = decode_token(authorization)
+    if team.name == "":
+        raise HTTPException(status_code=409, detail="Name is empty")
+    if len(team.name) < 3:
+        raise HTTPException(status_code=409, detail="Name is too short")
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        try:
+            cursor.execute("UPDATE teams SET name = %(new_name)s WHERE name = BINARY %(name)s AND owner_user_id = %(owner_user_id)s", {'new_name': team.name, 'name': team_name, 'owner_user_id': token.id})
+        except IntegrityError:
+            raise HTTPException(status_code=409, detail="This name is already taken")
+        if cursor.rowcount == 0:
+            detect_error_teams(cursor, team_name, token.id, False, False)
     return JSONResponse({})
 
 @app.get("/users/{username}/teams")
 def get_teams(username: str, only_owned: bool = False, only_unowned: bool = False, only_active: bool = False, only_unactive: bool = False, only_coached: bool = False, only_contested: bool = False, only_confirmed: bool = False, only_unconfirmed: bool = False, only_declined: bool = False, only_undeclined: bool = False) -> JSONResponse:
-    res: list[dict[str, str | int]] = []
-    for team in get_teams_by_user_db(username, only_owned, only_unowned, only_active, only_unactive, only_coached, only_contested, only_confirmed, only_unconfirmed, only_declined, only_undeclined):
-        user: User | None = get_user_db(id=team.owner_user_id)
-        if user is not None:
-            res.append({
-                'name': team.name,
-                'owner_username': user.username,
-                'active': bool(team.active)
-            })
-    return JSONResponse({
-        'teams': res
-    })
+    filter_conditions: str = ""
+    if only_owned:
+        filter_conditions += " AND users.username = BINARY %(username)s"
+    if only_unowned:
+        filter_conditions += " AND users.username <> %(username)s"
+    if only_active:
+        filter_conditions += " AND teams.active = 1"
+    if only_unactive:
+        filter_conditions += " AND teams.active = 0"
+    if only_coached:
+        filter_conditions += " AND team_members.coach = 1"
+    if only_contested:
+        filter_conditions += " AND team_members.coach = 0"
+    if only_confirmed:
+        filter_conditions += " AND team_members.confirmed = 1"
+    if only_unconfirmed:
+        filter_conditions += " AND team_members.confirmed = 0"
+    if only_declined:
+        filter_conditions += " AND team_members.declined = 1"
+    if only_undeclined:
+        filter_conditions += " AND team_members.declined = 0"
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("""
+            SELECT 
+                teams.name AS name,
+                users.username AS owner_username,
+                teams.active AS active
+            FROM teams
+            INNER JOIN users ON teams.owner_user_id = users.id
+            WHERE users.username = BINARY %(username)s AND teams.individual = 0
+        """ + filter_conditions, {'username': username})
+        teams: list[Any] = list(cursor.fetchall())
+        if len(teams) == 0:
+            cursor.execute("SELECT 1 FROM users WHERE username = BINARY %(username)s LIMIT 1", {'username': username})
+            if cursor.fetchone() is None:
+                raise HTTPException(status_code=404, detail="User does not exist")
+        return JSONResponse({
+            'teams': teams
+        })
 
 @app.put("/teams/{team_name}/activate")
 def put_activate_team(team_name: str, authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    if authorization is not None:
-        activate_deactivate_team_db(team_name, authorization, 1)
-    else:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("UPDATE teams SET active = 1 WHERE name = BINARY %(name)s AND owner_user_id = %(owner_user_id)s", {'name': team_name, 'owner_user_id': token.id})
+        if cursor.rowcount == 0:
+            detect_error_teams(cursor, team_name, token.id, False, False)
     return JSONResponse({})
 
 @app.put("/teams/{team_name}/deactivate")
 def put_deactivate_team(team_name: str, authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    if authorization is not None:
-        activate_deactivate_team_db(team_name, authorization, 0)
-    else:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("UPDATE teams SET active = 0 WHERE name = BINARY %(name)s AND owner_user_id = %(owner_user_id)s", {'name': team_name, 'owner_user_id': token.id})
+        if cursor.rowcount == 0:
+            detect_error_teams(cursor, team_name, token.id, False, False)
     return JSONResponse({})
 
 @app.get("/teams/{team_name}/check-if-can-be-deleted")
 def get_check_if_team_can_be_deleted(team_name: str) -> JSONResponse:
-    return JSONResponse({
-        'can': check_if_team_can_be_deleted_db(team_name)
-    })
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("""
+            SELECT 1
+            FROM competition_participants
+            INNER JOIN teams ON competition_participants.team_id = teams.id
+            WHERE teams.name = BINARY %(team_name)s
+        """, {'team_name': team_name})
+        return JSONResponse({
+            'can': len(cursor.fetchall()) == 0
+        })
 
 @app.delete("/teams/{team_name}")
 def delete_team(team_name: str, authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    if authorization is not None:
-        delete_team_db(team_name, authorization)
-    else:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("""
+            DELETE team_members
+            FROM team_members
+            INNER JOIN teams ON team_members.team_id = teams.id
+            WHERE teams.name = BINARY %(name)s AND owner_user_id = %(owner_user_id)s
+        """, {'name': team_name, 'owner_user_id': token.id})
+        cursor.execute("DELETE FROM teams WHERE name = BINARY %(name)s AND owner_user_id = %(owner_user_id)s", {'name': team_name, 'owner_user_id': token.id})
+        if cursor.rowcount == 0:
+            detect_error_teams(cursor, team_name, token.id, False, False)
     return JSONResponse({})
+
+def detect_error_team_members(cursor: MySQLCursorAbstract, team_name: str, owner_user_id: int, member_username: str, ignore_ownership: bool, ignore_internal_server_error: bool) -> None:
+    cursor.execute("SELECT owner_user_id FROM teams WHERE name = BINARY %(name)s LIMIT 1", {'name': team_name})
+    team: Any = cursor.fetchone()
+    if team is None:
+        raise HTTPException(status_code=404, detail="Team does not exist")
+    if not ignore_ownership or team['owner_user_id'] != owner_user_id:
+        raise HTTPException(status_code=403, detail="You are not the owner of the team")
+    cursor.execute("SELECT 1 FROM users WHERE username = BINARY %(username)s LIMIT 1", {'username': member_username})
+    if cursor.fetchone() is None:
+        raise HTTPException(status_code=404, detail="User does not exist")
+    if not ignore_internal_server_error:
+        raise HTTPException(status_code=500, detail="Internal Server Error")
 
 @app.post("/teams/{team_name}/members")
 def post_team_member(team_member: TeamMemberRequest, team_name: str, authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    if authorization is not None:
-        create_team_member_db(team_member, team_name, authorization)
-    else:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    token: Token = decode_token(authorization)
+    if team_member.member_username == "":
+        raise HTTPException(status_code=409, detail="Username is empty")
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("SELECT id FROM users WHERE username = BINARY %(username)s LIMIT 1", {'username': team_member.member_username})
+        member: Any = cursor.fetchone()
+        if member is None:
+            raise HTTPException(status_code=404, detail="User does not exist")
+        member_user_id: int = member['id']
+        cursor.execute("SELECT id, owner_user_id FROM teams WHERE name = BINARY %(name)s LIMIT 1", {'name': team_name})
+        team: Any = cursor.fetchone()
+        if team is None:
+            raise HTTPException(status_code=404, detail="Team does not exist")
+        if team['owner_user_id'] != token.id:
+            raise HTTPException(status_code=403, detail="You are not the owner of the team")
+        team_id: int = team['id']
+        try:
+            cursor.execute("INSERT INTO team_members (member_user_id, team_id, coach, confirmed, declined) VALUES (%(member_user_id)s, %(team_id)s, 0, 0, 0)", {'member_user_id': member_user_id, 'team_id': team_id})
+        except IntegrityError:
+            raise HTTPException(status_code=409, detail="This user is already in the team")
     return JSONResponse({})
 
 @app.get("/teams/{team_name}/members")
 def get_team_members(team_name: str, only_coaches: bool = False, only_contestants: bool = False, only_confirmed: bool = False, only_unconfirmed: bool = False, only_declined: bool = False, only_undeclined: bool = False) -> JSONResponse:
-    res: list[dict[str, str | int]] = []
-    for team_member in get_team_members_db(team_name, only_coaches, only_contestants, only_confirmed, only_unconfirmed, only_declined, only_undeclined):
-        member: User | None = get_user_db(id=team_member.member_user_id)
-        if member is not None:
-            res.append({
-                'member_username': member.username,
-                'team_name': team_name,
-                'coach': bool(team_member.coach),
-                'confirmed': bool(team_member.confirmed),
-                'declined': bool(team_member.declined)
-            })
-        else:
-            raise HTTPException(status_code=404, detail="Team member does not exist")
-    return JSONResponse({
-        'team_members': res
-    })
+    filter_conditions: str = ""
+    if only_coaches:
+        filter_conditions += " AND team_members.coach = 1"
+    if only_contestants:
+        filter_conditions += " AND team_members.coach = 0"
+    if only_confirmed:
+        filter_conditions += " AND team_members.confirmed = 1"
+    if only_unconfirmed:
+        filter_conditions += " AND team_members.confirmed = 0"
+    if only_declined:
+        filter_conditions += " AND team_members.declined = 1"
+    if only_undeclined:
+        filter_conditions += " AND team_members.declined = 0"
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("""
+            SELECT 
+                users.username AS member_username,
+                teams.name AS team_name,
+                team_members.coach AS coach,
+                team_members.confirmed AS confirmed,
+                team_members.declined AS declined
+            FROM team_members
+            INNER JOIN users ON team_members.member_user_id = users.id
+            INNER JOIN teams ON team_members.team_id = teams.id
+            WHERE teams.name = BINARY %(team_name)s
+        """ + filter_conditions, {'team_name': team_name})
+        team_members: list[Any] = list(cursor.fetchall())
+        if len(team_members) == 0:
+            cursor.execute("SELECT 1 FROM teams WHERE teams.name = BINARY %(team_name)s LIMIT 1", {'team_name': team_name})
+            if cursor.fetchone() is None:
+                raise HTTPException(status_code=404, detail="Team does not exist")
+        return JSONResponse({
+            'teams': team_members
+        })
 
 @app.get("/teams/{team_name}/members/{member_username}")
 def get_team_member(team_name: str, member_username: str) -> JSONResponse:
-    team_member: TeamMember | None = get_team_member_by_names_db(member_username, team_name)
-    if team_member is not None:
-        return JSONResponse({
-            'member_username': member_username, 
-            'team_name': team_name,
-            'coach': bool(team_member.coach),
-            'confirmed': bool(team_member.confirmed),
-            'declined': bool(team_member.declined)
-        })
-    else:
-        raise HTTPException(status_code=404, detail="Team member does not exist")
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("""
+            SELECT 
+                users.username AS member_username,
+                teams.name AS team_name,
+                team_members.coach AS coach,
+                team_members.confirmed AS confirmed,
+                team_members.declined AS declined
+            FROM team_members
+            INNER JOIN users ON team_members.member_user_id = users.id
+            INNER JOIN teams ON team_members.team_id = teams.id
+            WHERE teams.name = BINARY %(team_name)s AND users.username = %(member_username)s
+            LIMIT 1
+        """, {'team_name': team_name, 'member_username': member_username})
+        team_member: Any = cursor.fetchone()
+        if team_member is None:
+            cursor.execute("SELECT 1 FROM teams WHERE teams.name = BINARY %(team_name)s LIMIT 1", {'team_name': team_name})
+            if cursor.fetchone() is None:
+                raise HTTPException(status_code=404, detail="Team does not exist")
+            cursor.execute("SELECT 1 FROM users WHERE username = BINARY %(username)s LIMIT 1", {'username': member_username})
+            if cursor.fetchone() is None:
+                raise HTTPException(status_code=404, detail="User does not exist")
+            raise HTTPException(status_code=404, detail="This user is not in the team")
+        return JSONResponse(team_member)
 
 @app.put("/teams/{team_name}/members/{member_username}/make-coach")
 def put_make_team_member_coach(team_name: str, member_username: str, authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    if authorization is not None:
-        make_coach_contestant_db(team_name, member_username, authorization, 1)
-    else:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("""
+            UPDATE team_members
+            INNER JOIN users ON team_members.member_user_id = users.id
+            INNER JOIN teams ON team_members.team_id = teams.id
+            SET team_members.coach = 1
+            WHERE teams.name = BINARY %(team_name)s AND teams.owner_user_id = %(owner_user_id)s AND users.username = %(member_username)s
+        """, {'team_name': team_name, 'owner_user_id': token.id, 'member_username': member_username})
+        if cursor.rowcount == 0:
+            detect_error_team_members(cursor, team_name, token.id, member_username, False, False)
     return JSONResponse({})
 
 @app.put("/teams/{team_name}/members/{member_username}/make-contestant")
 def put_make_team_member_contestant(team_name: str, member_username: str, authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    if authorization is not None:
-        make_coach_contestant_db(team_name, member_username, authorization, 0)
-    else:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("""
+            UPDATE team_members
+            INNER JOIN users ON team_members.member_user_id = users.id
+            INNER JOIN teams ON team_members.team_id = teams.id
+            SET team_members.coach = 0
+            WHERE teams.name = BINARY %(team_name)s AND teams.owner_user_id = %(owner_user_id)s AND users.username = BINARY %(member_username)s
+        """, {'team_name': team_name, 'owner_user_id': token.id, 'member_username': member_username})
+        if cursor.rowcount == 0:
+            detect_error_team_members(cursor, team_name, token.id, member_username, False, False)
     return JSONResponse({})
 
 @app.put("/teams/{team_name}/members/{member_username}/confirm")
 def put_confirm_team_member(team_name: str, member_username: str, authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    if authorization is not None:
-        confirm_team_member_db(team_name, member_username, authorization)
-    else:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("""
+            UPDATE team_members
+            INNER JOIN users ON team_members.member_user_id = users.id
+            INNER JOIN teams ON team_members.team_id = teams.id
+            SET team_members.confirmed = 1
+            WHERE teams.name = BINARY %(team_name)s AND teams.owner_user_id = %(owner_user_id)s AND users.username = BINARY %(member_username)s
+        """, {'team_name': team_name, 'owner_user_id': token.id, 'member_username': member_username})
+        if cursor.rowcount == 0:
+            detect_error_team_members(cursor, team_name, token.id, member_username, False, False)
     return JSONResponse({})
 
 @app.put("/teams/{team_name}/members/{member_username}/decline")
 def put_decline_team_member(team_name: str, member_username: str, authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    if authorization is not None:
-        decline_team_member_db(team_name, member_username, authorization)
-    else:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("""
+            UPDATE team_members
+            INNER JOIN users ON team_members.member_user_id = users.id
+            INNER JOIN teams ON team_members.team_id = teams.id
+            SET team_members.declined = 1
+            WHERE teams.name = BINARY %(team_name)s AND teams.owner_user_id = %(owner_user_id)s AND users.username = BINARY %(member_username)s
+        """, {'team_name': team_name, 'owner_user_id': token.id, 'member_username': member_username})
+        if cursor.rowcount == 0:
+            detect_error_team_members(cursor, team_name, token.id, member_username, False, False)
     return JSONResponse({})
 
 @app.delete("/teams/{team_name}/members/{member_username}")
 def delete_team_member(team_name: str, member_username: str, authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    if authorization is not None:
-        delete_team_member_db(team_name, member_username, authorization)
-    else:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("""
+            DELETE team_members
+            FROM team_members
+            INNER JOIN users ON team_members.member_user_id = users.id
+            INNER JOIN teams ON team_members.team_id = teams.id
+            WHERE teams.name = BINARY %(team_name)s AND teams.owner_user_id = %(owner_user_id)s AND users.username = BINARY %(member_username)s
+        """, {'team_name': team_name, 'owner_user_id': token.id, 'member_username': member_username})
+        if cursor.rowcount == 0:
+            detect_error_team_members(cursor, team_name, token.id, member_username, False, False)
     return JSONResponse({})
+
+def detect_error_problems(cursor: MySQLCursorAbstract, problem_id: int, author_user_id: int, ignore_ownership_if_private: bool, ignore_ownership_if_public: bool, ignore_internal_server_error: bool) -> None:
+    cursor.execute("SELECT author_user_id, private FROM problems WHERE id = %(problem_id)s LIMIT 1", {'problem_id': problem_id})
+    problem: Any = cursor.fetchone()
+    if problem is None:
+        raise HTTPException(status_code=404, detail="Problem does not exist")
+    if ((problem['private'] == 1 and not ignore_ownership_if_private) or (problem['private'] == 0 and not ignore_ownership_if_public)) and problem['author_user_id'] != author_user_id:
+        raise HTTPException(status_code=403, detail="You are not the owner of the problem")
+    if not ignore_internal_server_error:
+        raise HTTPException(status_code=500, detail="Internal Server Error")
 
 @app.post("/problems")
 def post_problem(problem: ProblemRequest, authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    if authorization is not None:
-        return JSONResponse({
-            'problem_id': create_problem_db(problem, authorization)
-        })
-    else:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("""
+            INSERT INTO problems (author_user_id, name, statement, input_statement, output_statement, notes, time_restriction, memory_restriction, private)
+            VALUES (%(author_user_id)s, %(name)s, %(statement)s, %(input_statement)s, %(output_statement)s, %(notes)s, %(time_restriction)s, %(memory_restriction)s, %(private)s)
+            """, {'authro_user_id': token.id, 'name': problem.name, 'statement': problem.statement, 'input_statement': problem.input_statement, 'output_statement': problem.output_statement, 'notes': problem.notes, 'time_restriction': problem.time_restriction, 'memory_restriction': problem.memory_restriction, 'private': int(problem.private)})
+        problem_id: int | None = cursor.lastrowid
+        if problem_id is None:
+            raise HTTPException(status_code=500, detail="Internal Server Error")
+        return JSONResponse({'problem_id': problem_id})
+        
 @app.get("/problems/{problem_id}")
 def get_problem(problem_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    problem: Problem | None = get_problem_db(problem_id, authorization if authorization is not None else '')
-    if problem is None:
-        raise HTTPException(status_code=404, detail="Problem does not exist")
-    else:
-        author: User | None = get_user_db(id=problem.author_user_id)
-        if author is not None:
-            return JSONResponse({
-                'id': problem.id,
-                'author_user_username': author.username,
-                'name': problem.name,
-                'statement': problem.statement,
-                'input_statement': problem.input_statement,
-                'output_statement': problem.output_statement,
-                'notes': problem.notes,
-                'time_restriction': problem.time_restriction,
-                'memory_restriction': problem.memory_restriction,
-                'private': bool(problem.private)
-            })
-        else:
-            raise HTTPException(status_code=404, detail="Author of the problem does not exist")
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("""
+            SELECT
+                problems.id AS id,
+                users.username AS author_user_username,
+                problems.name AS name,
+                problems.statement AS statement,
+                problems.input_statement AS input_statement,
+                problems.output_statement AS output_statement,
+                problems.notes AS notes,
+                problems.time_restriction AS time_restriction,
+                problems.memory_restriction AS memory_restriction,
+                problems.private AS private
+            FROM problems
+            INNER JOIN users ON problems.author_user_id = users.id
+            WHERE id = %(problem_id)s
+            LIMIT 1
+        """, {'problem_id': problem_id})
+        problem: Any = cursor.fetchone()
+        if problem is None:
+            raise HTTPException(status_code=404, detail="Problem does not exist")
+        if problem['private'] == 1:
+            token: Token = decode_token(authorization)
+            if token.id != problem['author_user_id']:
+                raise HTTPException(status_code=403, detail="You are not the author of this private problem")
+        return JSONResponse(problem)
+
+@app.get('/problems')
+def get_problems(start: int = 1, limit: int = 100) -> JSONResponse:
+    if start < 1:
+        raise HTTPException(status_code=400, detail="Start must be greater than or equal 1")
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("""
+            SELECT
+                problems.id AS id,
+                users.username AS author_user_username,
+                problems.name AS name,
+                problems.statement AS statement,
+                problems.input_statement AS input_statement,
+                problems.output_statement AS output_statement,
+                problems.notes AS notes,
+                problems.time_restriction AS time_restriction,
+                problems.memory_restriction AS memory_restriction,
+                problems.private AS private
+            FROM problems
+            INNER JOIN users ON problems.author_user_id = users.id
+            WHERE problems.private = 0
+            LIMIT %(limit)s OFFSET %(start)s
+        """, {'limit': limit, 'start': start - 1})
+        return JSONResponse({
+            'problems': list(cursor.fetchall())
+        })
 
 @app.get('/users/{username}/problems')
-def get_problems(username: str, authorization: Annotated[str | None, Header()], only_public: bool = False, only_private: bool = False) -> JSONResponse:
-    res: list[dict[str, str | int]] = []
-    if authorization is not None:
-        for problem in get_problems_by_author_db(username, only_public, only_private, authorization):
-            author: User | None = get_user_db(id=problem.author_user_id)
-            if author is not None:
-                res.append({
-                    'id': problem.id,
-                    'author_user_username': author.username,
-                    'name': problem.name,
-                    'statement': problem.statement,
-                    'input_statement': problem.input_statement,
-                    'output_statement': problem.output_statement,
-                    'notes': problem.notes,
-                    'time_restriction': problem.time_restriction,
-                    'memory_restriction': problem.memory_restriction,
-                    'private': bool(problem.private)
-                })
+def get_problems_users(username: str, authorization: Annotated[str | None, Header()], only_public: bool = False, only_private: bool = False) -> JSONResponse:
+    if not only_public:
+        token: Token = decode_token(authorization)
+        if token.username != username:
+            raise HTTPException(status_code=403, detail="You are trying to access not only public problems not being owned by you")
+    filter_conditions: str = ""
+    if only_public:
+        filter_conditions += " AND private = 0"
+    if only_private:
+        filter_conditions += " AND private = 1"
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("""
+            SELECT
+                problems.id AS id,
+                users.username AS author_user_username,
+                problems.name AS name,
+                problems.statement AS statement,
+                problems.input_statement AS input_statement,
+                problems.output_statement AS output_statement,
+                problems.notes AS notes,
+                problems.time_restriction AS time_restriction,
+                problems.memory_restriction AS memory_restriction,
+                problems.private AS private
+            FROM problems
+            INNER JOIN users ON problems.author_user_id = users.id
+            WHERE users.username = BINARY %(username)s
+        """ + filter_conditions, {'username': username})
+        problems: list[Any] = list(cursor.fetchall())
+        if problems is None:
+            raise HTTPException(status_code=404, detail="Problem does not exist")
         return JSONResponse({
-            'problems': res
+            'problems': problems
         })
-    else:
-        raise HTTPException(status_code=401, detail="Invalid token")
 
 @app.put("/problems/{problem_id}/make-public")
 def put_make_problem_public(problem_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    if authorization is not None:
-        make_problem_public_private_db(problem_id, 0, authorization)
-    else:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("""
+            UPDATE problems
+            SET private = 0
+            WHERE id = %(problem_id)s AND author_user_id = %(author_user_id)s
+        """, {'problem_id': problem_id, 'author_user_id': token.id})
+        if cursor.rowcount == 0:
+            detect_error_problems(cursor, problem_id, token.id, False, False, False)
     return JSONResponse({})
 
 @app.put("/problems/{problem_id}/make-private")
 def put_make_problem_private(problem_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    if authorization is not None:
-        make_problem_public_private_db(problem_id, 1, authorization)
-    else:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("""
+            UPDATE problems
+            SET private = 1
+            WHERE id = %(problem_id)s AND author_user_id = %(author_user_id)s
+        """, {'problem_id': problem_id, 'author_user_id': token.id})
+        if cursor.rowcount == 0:
+            detect_error_problems(cursor, problem_id, token.id, False, False, False)
     return JSONResponse({})
 
 @app.get("/problems/{problem_id}/check-if-can-be-edited")
 def get_check_if_problem_can_be_edited(problem_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    if authorization is not None:
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("SELECT author_user_id, private FROM problems WHERE id = %(problem_id)s LIMIT 1", {'problem_id': problem_id})
+        problem: Any = cursor.fetchone()
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Problem does not exist")
+        if problem['private']:
+            token: Token = decode_token(authorization)
+            if token.id != problem['author_user_id']:
+                raise HTTPException(status_code=403, detail="You are not the owner of the problem")
+        cursor.execute("SELECT 1 FROM submissions WHERE problem_id = %(problem_id)s LIMIT 1", {'problem_id': problem_id})
         return JSONResponse({
-            'can': check_if_problem_can_be_edited_db(problem_id, authorization)
+            'can': len(cursor.fetchall()) == 0
         })
-    else:
-        raise HTTPException(status_code=401, detail="Invalid token")
 
 @app.put("/problems/{problem_id}")
 def put_problem(problem_id: int, problem: ProblemRequestUpdate, authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    if authorization is not None:
-        update_problem_db(problem_id, problem, authorization)
-    else:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    token: Token = decode_token(authorization)
+    update_set: str = ""
+    update_dict: dict[str, Any] = {'problem_id': problem_id}
+    if problem.name is not None and problem.name != '':
+        update_set += "name = %(name)s, "
+        update_dict['name'] = problem.name
+    if problem.statement is not None and problem.statement != '':
+        update_set += "statement = %(statement)s, "
+        update_dict['statement'] = problem.statement
+    if problem.input_statement is not None and problem.input_statement != '':
+        update_set += "input_statement = %(input_statement)s, "
+        update_dict['input_statement'] = problem.input_statement
+    if problem.output_statement is not None and problem.output_statement != '':
+        update_set += "output_statement = %(output_statement)s, "
+        update_dict['output_statement'] = problem.output_statement
+    if problem.notes is not None and problem.notes != '':
+        update_set += "notes = %(notes)s, "
+        update_dict['notes'] = problem.notes
+    if problem.time_restriction is not None and problem.time_restriction > 0:
+        update_set += "time_restriction = %(time_restriction)s, "
+        update_dict['time_restriction'] = problem.time_restriction
+    if problem.memory_restriction is not None and problem.memory_restriction > 0:
+        update_set += "memory_restriction = %(memory_restriction)s, "
+        update_dict['memory_restriction'] = problem.memory_restriction
+    if update_set == "":
+        return JSONResponse({})
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("UPDATE problems SET " + update_set[:-2] + " WHERE id = %(problem_id)s", update_dict)
+        if cursor.rowcount == 0:
+            detect_error_problems(cursor, problem_id, token.id, False, False, False)
     return JSONResponse({})
 
 @app.delete("/problems/{problem_id}")
 def delete_problem(problem_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    if authorization is not None:
-        delete_problem_db(problem_id, authorization)
-    else:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("""
+            DELETE problems
+            FROM problems
+            INNER JOIN users ON problems.author_user_id = users.id
+            WHERE problems.id = %(problem_id)s AND users.id = %(author_user_id)s
+        """, {'problem_id': problem_id, 'author_user_id': token.id})
+        if cursor.rowcount == 0:
+            detect_error_problems(cursor, problem_id, token.id, False, False, False)
     return JSONResponse({})
 
 @app.post("/problems/{problem_id}/test-cases")
 def post_test_case(problem_id: int, test_case: TestCaseRequest, authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    if authorization is not None:
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        detect_error_problems(cursor, problem_id, token.id, False, False, True)
+        cursor.execute("""
+            INSERT INTO test_cases (problem_id, input, solution, score, opened)
+            VALUES (%(problem_id)s, %(input)s, %(solution)s, %(score)s, %(opened)s)
+            """, {'problem_id': problem_id, 'input': test_case.input, 'solution': test_case.solution, 'score': test_case.score, 'opened': int(test_case.opened)})
+        test_case_id: int | None = cursor.lastrowid
+        if test_case_id is None:
+            raise HTTPException(status_code=500, detail="Internal Server Error")
         return JSONResponse({
-            'test_case_id': create_test_case_db(test_case, problem_id, authorization)
+            'test_case_id': test_case_id
         })
-    else:
-        raise HTTPException(status_code=401, detail="Invalid token")
 
 @app.get("/problems/{problem_id}/test-cases/{test_case_id}")
 def get_test_case(problem_id: int, test_case_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    if authorization is not None:
-        test_case: TestCase | None = get_test_case_db(test_case_id, problem_id, authorization)
-    else:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    if test_case is None:
-        raise HTTPException(status_code=404, detail="Test case does not exist")
-    else:
-        return JSONResponse({
-            'id': test_case.id,
-            'problem_id': test_case.problem_id,
-            'input': test_case.input,
-            'solution': test_case.solution,
-            'score': test_case.score,
-            'opened': bool(test_case.opened)
-        })
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("""
+            SELECT id, problem_id, input, solution, score, opened
+            FROM test_cases
+            WHERE id = %(test_case_id)s AND problem_id = %(problem_id)s
+            LIMIT 1
+        """, {'problem_id': problem_id, 'test_case_id': test_case_id})
+        test_case: Any = cursor.fetchone()
+        if test_case is None:
+            detect_error_problems(cursor, problem_id, -1, True, True, True)
+            raise HTTPException(status_code=404, detail="Test case does not exist")
+        if test_case['closed']:
+            token: Token = decode_token(authorization)
+            detect_error_problems(cursor, problem_id, token.id, False, False, True)
+        else:
+            detect_error_problems(cursor, problem_id, -1, False, True, True)
+        return JSONResponse(test_case)
 
 @app.get("/problems/{problem_id}/test-cases")
 def get_test_cases(problem_id: int, authorization: Annotated[str | None, Header()], only_opened: bool = False, only_closed: bool = False) -> JSONResponse:
-    test_cases: list[dict[str, str | int | None]] = []
-    if authorization is not None:
-        for test_case in get_test_cases_db(problem_id, only_opened, only_closed, authorization):
-            test_cases.append({
-                'id': test_case.id,
-                'problem_id': test_case.problem_id,
-                'input': test_case.input,
-                'solution': test_case.solution,
-                'score': test_case.score,
-                'opened': bool(test_case.opened)
-            })
+    filter_conditions: str = ""
+    if only_opened:
+        filter_conditions += " AND opened = 1"
+    if only_closed:
+        filter_conditions += " AND opened = 0"
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("SELECT author_user_id, private FROM test_cases WHERE problem_id = %(problem_id)s LIMIT 1", {'problem_id': problem_id})
+        problem: Any = cursor.fetchone()
+        if problem is None:
+            raise HTTPException(status_code=404, detail="Problem does not exist")
+        if problem['private'] == 1 or not only_opened:
+            token: Token = decode_token(authorization)
+            if token.id != problem['author_user_id']:
+                raise HTTPException(status_code=403, detail="You are not the owner of this private problem")
+        cursor.execute("""
+            SELECT id, problem_id, input, solution, score, opened
+            FROM test_cases
+            WHERE problem_id = %(problem_id)s
+        """ + filter_conditions, {'problem_id': problem_id})
+        test_cases: list[Any] = list(cursor.fetchall())
         return JSONResponse({
             'test_cases': test_cases
         })
-    else:
-        raise HTTPException(status_code=401, detail="Invalid token")
 
 @app.get("/problems/{problem_id}/with-test-cases")
 def get_problem_full(problem_id: int, authorization: Annotated[str | None, Header()], only_opened: bool = False, only_closed: bool = False) -> JSONResponse:
-    problem: Problem | None = get_problem_with_test_cases_db(problem_id, only_opened, only_closed, authorization if authorization is not None else '', False)
-    if problem is None:
-        raise HTTPException(status_code=404, detail="Problem does not exist")
-    else:
-        test_cases: list[dict[str, str | int | bool]] = []
-        for test_case in problem.test_cases:
-            test_cases.append({
-                'id': test_case.id,
-                'problem_id': test_case.problem_id,
-                'input': test_case.input,
-                'solution': test_case.solution,
-                'score': test_case.score,
-                'opened': bool(test_case.opened)
-            })
-        author: User | None = get_user_db(id=problem.author_user_id)
-        if author is not None:
-            return JSONResponse({
-                'id': problem.id,
-                'author_user_username': author.username,
-                'name': problem.name,
-                'statement': problem.statement,
-                'input_statement': problem.input_statement,
-                'output_statement': problem.output_statement,
-                'notes': problem.notes,
-                'time_restriction': problem.time_restriction,
-                'memory_restriction': problem.memory_restriction,
-                'private': bool(problem.private),
-                'test_cases': test_cases
-            })
-        else:
-            raise HTTPException(status_code=404, detail="Author of the problem does not exist")
+    filter_conditions: str = ""
+    if only_opened:
+        filter_conditions += " AND opened = 1"
+    if only_closed:
+        filter_conditions += " AND opened = 0"
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("""
+            SELECT
+                problems.id AS id,
+                users.username AS author_user_username,
+                problems.name AS name,
+                problems.statement AS statement,
+                problems.input_statement AS input_statement,
+                problems.output_statement AS output_statement,
+                problems.notes AS notes,
+                problems.time_restriction AS time_restriction,
+                problems.memory_restriction AS memory_restriction,
+                problems.private AS private
+            FROM problems
+            INNER JOIN users ON problems.author_user_id = users.id
+            WHERE problems.id = %(problem_id)s
+        """, {'problem_id': problem_id})
+        problem: Any = cursor.fetchone()
+        if problem is None:
+            raise HTTPException(status_code=404, detail="Problem does not exist")
+        if problem['private'] == 1 or not only_opened:
+            token: Token = decode_token(authorization)
+            if token.username != problem['author_user_username']:
+                raise HTTPException(status_code=403, detail="You are not the owner of this private problem")
+        cursor.execute("""
+            SELECT id, problem_id, input, solution, score, opened
+            FROM test_cases
+            WHERE problem_id = %(problem_id)s
+        """ + filter_conditions, {'problem_id': problem_id})
+        problem['test_cases'] = list(cursor.fetchall())
+        return JSONResponse(problem)
 
 @app.put("/problems/{problem_id}/test-cases/{test_case_id}/make-opened")
 def put_make_test_case_opened(problem_id: int, test_case_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    if authorization is not None:
-        make_test_case_opened_closed_db(test_case_id, problem_id, 1, authorization)
-    else:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("""
+            UPDATE test_cases
+            INNER JOIN problems ON test_cases.problem_id = problems.id
+            INNER JOIN users ON problems.author_user_id = users.id
+            SET opened = 1
+            WHERE test_cases.id = %(test_case_id)s AND problem_id = %(problem_id)s AND users.id = %(author_user_id)s
+        """, {'test_case_id': test_case_id, 'problem_id': problem_id, 'author_user_id': token.id})
+        if cursor.rowcount == 0:
+            detect_error_problems(cursor, problem_id, token.id, False, False, False)
     return JSONResponse({})
 
 @app.put("/problems/{problem_id}/test-cases/{test_case_id}/make-closed")
 def put_make_test_case_closed(problem_id: int, test_case_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    if authorization is not None:
-        make_test_case_opened_closed_db(test_case_id, problem_id, 0, authorization)
-    else:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("""
+            UPDATE test_cases
+            INNER JOIN problems ON test_cases.problem_id = problems.id
+            INNER JOIN users ON problems.author_user_id = users.id
+            SET opened = 0
+            WHERE test_cases.id = %(test_case_id)s AND problem_id = %(problem_id)s AND users.id = %(author_user_id)s
+        """, {'test_case_id': test_case_id, 'problem_id': problem_id, 'author_user_id': token.id})
+        if cursor.rowcount == 0:
+            detect_error_problems(cursor, problem_id, token.id, False, False, False)
     return JSONResponse({})
 
 @app.put("/problems/{problem_id}/test-cases/{test_case_id}")
 def put_test_case(problem_id: int, test_case_id: int, test_case: TestCaseRequestUpdate, authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    if authorization is not None:
-        update_test_case_db(test_case_id, problem_id, test_case, authorization)
-    else:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    token: Token = decode_token(authorization)
+    update_set: str = ""
+    update_dict: dict[str, Any] = {'test_case_id': test_case_id, 'problem_id': problem_id, 'author_user_id': token.id}
+    if test_case.input is not None and test_case.input != '':
+        update_set += "input = %(input)s, "
+        update_dict['input'] = test_case.input
+    if test_case.solution is not None and test_case.solution != '':
+        update_set += "solution = %(solution)s, "
+        update_dict['solution'] = test_case.solution
+    if test_case.score is not None and test_case.score >= 0:
+        update_set += "score = %(score)s, "
+        update_dict['score'] = test_case.score
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("""
+            UPDATE test_cases
+            INNER JOIN problems ON test_cases.problem_id = problems.id
+            INNER JOIN users ON problems.author_user_id = users.id
+            """ + update_set[:-2] + """
+            WHERE test_cases.id = %(test_case_id)s AND problem_id = %(problem_id)s AND users.id = %(author_user_id)s
+        """, update_dict)
+        if cursor.rowcount == 0:
+            detect_error_problems(cursor, problem_id, token.id, False, False, False)
     return JSONResponse({})
 
 @app.delete("/problems/{problem_id}/test-cases/{test_case_id}")
 def delete_test_case(problem_id: int, test_case_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    if authorization is not None:
-        delete_test_case_db(problem_id, test_case_id, authorization)
-    else:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("""
+            DELETE test_cases
+            FROM test_cases
+            INNER JOIN problems ON test_cases.problem_id = problems.id
+            INNER JOIN users ON problems.author_user_id = users.id
+            WHERE test_cases.id = %(test_case_id)s AND problem_id = %(problem_id)s AND users.id = %(author_user_id)s
+        """, {'test_case_id': test_case_id, 'problem_id': problem_id, 'author_user_id': token.id})
+        if cursor.rowcount == 0:
+            detect_error_problems(cursor, problem_id, token.id, False, False, False)
     return JSONResponse({})
 
-def check_test_case_process_wrapper(result_queue: Any, *args: ...) -> None:
-    result_queue.put(lib.check_test_case(*args))
-
-def check_problem(submission_id: int, problem_id: int, token: str, code: str, language: str) -> None:
-    create_files_result: CreateFilesResult = lib.create_files(submission_id, code, language)
-    if create_files_result.status == 0:
-        mark_submission_compilation_db(submission_id, True, "", token)
-    else:
-        mark_submission_compilation_db(submission_id, False, create_files_result.description, token)
-    problem: ProblemWithTestCases = get_problem_with_test_cases_db(problem_id, False, False, token, True)
-    correct_score: int = 0
-    total_score: int = 0
-    total_verdict: tuple[int, str] = (-1, "")
-    for index, test_case in enumerate(problem.test_cases):
+def check_problem(submission_id: int, problem_id: int, code: str, language: str) -> None:
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        create_files_result: CreateFilesResult = lib.create_files(submission_id, code, language)
         if create_files_result.status == 0:
-            test_result: TestResult = lib.check_test_case(submission_id, test_case.id, language, test_case.input, test_case.solution, problem.time_restriction, problem.memory_restriction)
-            if test_result.status == 0:
-                correct_score += test_case.score
+            cursor.execute("""
+                UPDATE submissions
+                SET compiled = 1, compilation_details = ''
+                WHERE id = %(submission_id)s
+            """, {'submission_id': submission_id})
         else:
-            test_result: TestResult = TestResult(status=create_files_result.status, time=0, cpu_time=0, memory=0)
-        verdict: Verdict | None = get_verdict_db(test_result.status + 1)
-        if verdict is not None:
+            cursor.execute("""
+                UPDATE submissions
+                SET compiled = 1, compilation_details = %(compilation_details)s
+                WHERE id = %(submission_id)s
+            """, {'submission_id': submission_id, 'compilation_details': create_files_result.description})
+        cursor.execute("""
+            SELECT
+                problems.time_restriction AS time_restriction,
+                problems.memory_restriction AS memory_restriction
+            FROM problems
+            WHERE problems.id = %(problem_id)s
+        """, {'problem_id': problem_id})
+        problem: Any = cursor.fetchone()
+        cursor.execute("""
+            SELECT id, problem_id, input, solution, score, opened
+            FROM test_cases
+            WHERE problem_id = %(problem_id)s
+        """, {'problem_id': problem_id})
+        test_cases: list[Any] = list(cursor.fetchall())
+        correct_score: int = 0
+        total_score: int = 0
+        total_verdict: tuple[int, str] = (-1, "")
+        for index, test_case in enumerate(test_cases):
+            if create_files_result.status == 0:
+                test_result: TestResult = lib.check_test_case(submission_id, test_case['id'], language, test_case['input'], test_case['solution'], problem['time_restriction'], problem['memory_restriction'])
+                if test_result.status == 0:
+                    correct_score += test_case['score']
+            else:
+                test_result: TestResult = TestResult(status=create_files_result.status, time=0, cpu_time=0, memory=0)
+            cursor.execute("SELECT text FROM verdicts WHERE id = %(verdict_id)s", {'verdict_id': test_result.status + 2})
+            verdict: Any = cursor.fetchone()
+            cursor.execute("""
+                INSERT INTO submission_results (submission_id, test_case_id, verdict_id, time_taken, cpu_time_taken, memory_taken)
+                VALUES (%(submission_id)s, %(test_case_id)s, %(verdict_id)s, %(time_taken)s, %(cpu_time_taken)s, %(memory_taken)s)
+            """, {'submission_id': submission_id, 'test_case_id': test_case['id'], 'verdict_id': test_result.status + 2, 'time_taken': test_result.time, 'cpu_time_taken': test_result.cpu_time, 'memory_taken': test_result.memory})
             run(current_websockets[submission_id].send_message(dumps({
                 'type': 'result',
                 'status': 200,
                 'count': index + 1,
                 'result': {
-                    'id': create_submission_result_db(SubmissionResult(id=-1, submission_id=submission_id, test_case_id=test_case.id, verdict_id=test_result.status+1, time_taken=test_result.time, cpu_time_taken=test_result.cpu_time, memory_taken=test_result.memory)),
+                    'id': cursor.lastrowid,
                     'submission_id': submission_id,
-                    'test_case_id': test_case.id,
-                    'test_case_score': test_case.score,
-                    'test_case_opened': bool(test_case.opened),
-                    'verdict_text': verdict.text,
+                    'test_case_id': test_case['id'],
+                    'test_case_score': test_case['score'],
+                    'test_case_opened': test_case['opened'],
+                    'verdict_text': verdict['text'],
                     'time_taken': test_result.time,
                     'cpu_time_taken': test_result.cpu_time,
                     'memory_taken': test_result.memory
                 }
             })))
-        else:
-            raise(HTTPException(status_code=404, detail="Verdict does not exist"))
-        total_score += test_case.score
-        total_verdict = max(total_verdict, (test_result.status, verdict.text))
-    run(current_websockets[submission_id].send_message(dumps({
-        'type': 'totals',
-        'status': 200,
-        'totals': {
-            'compiled': create_files_result.status == 0,
-            'compilation_details': create_files_result.description,
-            'correct_score': correct_score,
-            'total_score': total_score,
-            'total_verdict': total_verdict[1]
-        }
-    })))
-    lib.delete_files(submission_id)
-    mark_submission_as_checked_db(submission_id, token)
-    current_websockets[submission_id].safe_set_flag()
-    if current_websockets[submission_id].websocket is None and current_websockets[submission_id].flag is None:
-        del current_websockets[submission_id]
+            total_score += test_case['score']
+            total_verdict = max(total_verdict, (test_result.status, verdict['text']))
+        run(current_websockets[submission_id].send_message(dumps({
+            'type': 'totals',
+            'status': 200,
+            'totals': {
+                'compiled': create_files_result.status == 0,
+                'compilation_details': create_files_result.description,
+                'correct_score': correct_score,
+                'total_score': total_score,
+                'total_verdict': total_verdict[1]
+            }
+        })))
+        lib.delete_files(submission_id)
+        cursor.execute("""
+            UPDATE submissions
+            SET checked = 1, correct_score = %(correct_score)s, total_score = %(total_score)s, total_verdict_id = %(total_verdict_id)s
+            WHERE id = %(submission_id)s
+        """, {'submission_id': submission_id, 'correct_score': correct_score, 'total_score': total_score, 'total_verdict_id': total_verdict[0] + 2})
+        current_websockets[submission_id].safe_set_flag()
+        if current_websockets[submission_id].websocket is None and current_websockets[submission_id].flag is None:
+            del current_websockets[submission_id]
 
 @app.post("/submissions")
 def submit(submission: SubmissionRequest, authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    if authorization is not None:
-        problem: Problem | None = get_problem_db(submission.problem_id)
-        if problem is not None:
-            submission_db_id: int = create_submission_db(submission, authorization)
-            current_websockets[submission_db_id] = CurrentWebsocket(None, None, [])
-            checking_queue.submit(check_problem, submission_db_id, submission.problem_id, authorization, submission.code, f"{submission.language_name} ({submission.language_version})")
-            return JSONResponse({
-                'submission_id': submission_db_id
-            })
-        else:
-            raise HTTPException(status_code=404, detail="Problem does not exist")
-    else:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        detect_error_problems(cursor, submission.problem_id, token.id, False, True, True)
+        cursor.execute("SELECT id FROM languages WHERE name = %(name)s AND version = %(version)s AND supported = 1 LIMIT 1", {'name': submission.language_name, 'version': submission.language_version})
+        language: Any = cursor.fetchone()
+        if language is None:
+            raise HTTPException(status_code=404, detail="Language does not exist")
+        cursor.execute("""
+            INSERT INTO submissions (author_user_id, problem_id, code, language_id, time_sent, checked, compiled, compilation_details, correct_score, total_score, total_verdict_id)
+            VALUES (%(author_user_id)s, %(problem_id)s, %(code)s, %(language_id)s, NOW(), 0, 0, '', 0, 0, 1)
+        """, {'author_user_id': token.id, 'problem_id': submission.problem_id, 'code': submission.code, 'language_id': language['id']})
+        submission_id: int | None = cursor.lastrowid
+        if submission_id is None:
+            raise HTTPException(status_code=500, detail="Internal server error")
+        current_websockets[submission_id] = CurrentWebsocket(None, None, [])
+        checking_queue.submit(check_problem, submission_id, submission.problem_id, submission.code, f"{submission.language_name} ({submission.language_version})")
+        return JSONResponse({
+            'submission_id': submission_id
+        })
 
 @app.get("/submissions/{submission_id}")
 def get_submission(submission_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    if authorization is not None:
-        submission: SubmissionWithResults = get_submission_with_results_db(submission_id, authorization)
-        user: User | None = get_user_db(submission.author_user_id)
-        if user is not None:
-            problem: Problem | None = get_problem_db(submission.problem_id)
-            if problem is not None:
-                language: Language | None = get_language_by_id_db(submission.language_id)
-                if language is not None:
-                    if submission.checked:
-                        results: list[dict[str, str | int | bool]] = []
-                        correct_score: int = 0
-                        total_score: int = 0
-                        total_verdict: tuple[int, str] = (-1, "")
-                        for result in submission.results:
-                            test_case: TestCase | None = get_test_case_db(result.test_case_id, submission.problem_id, authorization, True)
-                            if test_case is not None:
-                                verdict: Verdict | None = get_verdict_db(result.verdict_id)
-                                if verdict is not None:
-                                    results.append({
-                                        'id': result.id,
-                                        'submission_id': result.submission_id,
-                                        'test_case_id': result.test_case_id,
-                                        'test_case_score': test_case.score,
-                                        'test_case_opened': bool(test_case.opened),
-                                        'verdict_text': verdict.text,
-                                        'time_taken': result.time_taken,
-                                        'cpu_time_taken': result.cpu_time_taken,
-                                        'memory_taken': result.memory_taken
-                                    })
-                                    if verdict.id == 1:
-                                        correct_score += test_case.score
-                                    total_score += test_case.score
-                                    total_verdict = max(total_verdict, (verdict.id, verdict.text))
-                                else:
-                                    raise HTTPException(status_code=404, detail="Verdict does not exist")
-                            else:
-                                raise HTTPException(status_code=404, detail="Test case does not exist")
-                        return JSONResponse({
-                            'id': submission.id,
-                            'author_user_username': user.username,
-                            'problem_id': problem.id,
-                            'problem_name': problem.name,
-                            'code': submission.code,
-                            'language_name': language.name,
-                            'language_version': language.version,
-                            'time_sent': submission.time_sent.strftime('%Y-%m-%d %H:%M:%S'),
-                            'checked': bool(submission.checked),
-                            'compiled': bool(submission.compiled),
-                            'compilation_details': submission.compilation_details,
-                            'correct_score': correct_score,
-                            'total_score': total_score,
-                            'total_verdict': total_verdict[1],
-                            'results': results
-                        })
-                    else:
-                        return JSONResponse({
-                            'id': submission.id,
-                            'author_user_username': user.username,
-                            'problem_id': problem.id,
-                            'problem_name': problem.name,
-                            'code': submission.code,
-                            'language_name': language.name,
-                            'language_version': language.version,
-                            'time_sent': submission.time_sent.strftime('%Y-%m-%d %H:%M:%S'),
-                            'checked': bool(submission.checked),
-                            'realime_link': f"ws://localhost:8000/submissions/{submission_id}/realtime"
-                        }, status_code=202)
-                else:
-                    raise HTTPException(status_code=404, detail="Language does not exist")
-            else:
-                raise HTTPException(status_code=404, detail="Problem does not exist")
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("SELECT checked FROM submissions WHERE id = %(submission_id)s AND author_user_id = %(author_user_id)s LIMIT 1", {'submission_id': submission_id, 'author_user_id': token.id})
+        submission_first: Any = cursor.fetchone()
+        if submission_first is None:
+            cursor.execute("SELECT checked FROM submissions WHERE id = %(submission_id)s LIMIT 1", {'submission_id': submission_id})
+            if cursor.fetchone() is None:
+                raise HTTPException(status_code=404, detail="Submission does not exist")
+            raise HTTPException(status_code=404, detail="You are not the author of this submission")
+        if submission_first['checked']:
+            cursor.execute("""
+                SELECT
+                    submissions.id AS id,
+                    users.username AS author_user_username,
+                    submissions.problem_id AS problem_id,
+                    problems.name AS problem_name,
+                    submissions.code AS code,
+                    languages.name AS language_name,
+                    languages.version AS language_version,
+                    submissions.time_sent AS time_sent,
+                    submissions.checked AS checked,
+                    submissions.compiled AS compiled,
+                    submissions.compilation_details AS compilation_details,
+                    submissions.correct_score AS correct_score,
+                    submissions.total_score AS total_score,
+                    verdicts.text AS total_verdict
+                FROM submissions
+                INNER JOIN users ON submissions.author_user_id = users.id
+                INNER JOIN problems ON submissions.problem_id = problems.id
+                INNER JOIN languages ON submissions.language_id = languages.id
+                INNER JOIN verdicts ON submissions.total_verdict_id = verdicts.id
+                WHERE submissions.id = %(submission_id)s
+                LIMIT 1
+            """, {'submission_id': submission_id})
+            submission: Any = cursor.fetchone()
+            cursor.execute("""
+                SELECT
+                    submission_results.id AS id,
+                    submission_results.submission_id AS submission_id,
+                    submission_results.test_case_id AS test_case_id,
+                    test_cases.score AS test_case_score,
+                    test_cases.opened AS test_case_opened,
+                    verdicts.text AS verdict_text,
+                    submission_results.time_taken AS time_taken,
+                    submission_results.cpu_time_taken AS cpu_time_taken,
+                    submission_results.memory_taken AS memory_taken
+                FROM submission_results
+                INNER JOIN test_cases ON submission_results.test_case_id = test_cases.id
+                INNER JOIN verdicts ON submission_results.verdict_id = verdicts.id
+                WHERE submission_results.submission_id = %(submission_id)s
+            """, {'submission_id': submission_id})
+            submission['results'] = cursor.fetchall()
+            return JSONResponse(submission)
         else:
-            raise HTTPException(status_code=404, detail="User does not exist")
-    else:
-        raise HTTPException(status_code=401, detail="Invalid token")
+            cursor.execute("""
+                SELECT
+                    submissions.id AS id,
+                    users.username AS author_user_username,
+                    submissions.problem_id AS problem_id,
+                    problems.name AS problem_name,
+                    submissions.code AS code,
+                    languages.name AS language_name,
+                    languages.version AS language_version,
+                    submissions.time_sent AS time_sent,
+                    submissions.checked AS checked,
+                FROM submissions
+                INNER JOIN users ON submissions.author_user_id = users.id
+                INNER JOIN problems ON submissions.problem_id = problems.id
+                INNER JOIN languages ON submissions.language_id = languages.id
+                INNER JOIN verdicts ON submissions.total_verdict_id = verdicts.id
+                WHERE submissions.id = %(submission_id)s
+                LIMIT 1
+            """, {'submission_id': submission_id})
+            submission: Any = cursor.fetchone()
+            submission['realime_link'] = f"ws://localhost:8000/submissions/{submission_id}/realtime"
+            return JSONResponse(submission, status_code=202)
 
 @app.websocket("/submissions/{submission_id}/realtime")
 async def websocket_endpoint_submissions(websocket: WebSocket, submission_id: int):
@@ -676,159 +1083,86 @@ async def websocket_endpoint_submissions(websocket: WebSocket, submission_id: in
 
 @app.get("/submissions/{submission_id}/public")
 def get_submission_public(submission_id: int)-> JSONResponse:
-    submission: SubmissionPublic | None = get_submission_public_db(submission_id)
-    if submission is not None:
-        user: User | None = get_user_db(id=submission.author_user_id)
-        if user is not None:
-            problem: Problem | None = get_problem_db(submission.problem_id)
-            if problem is not None:
-                language: Language | None = get_language_by_id_db(submission.language_id)
-                if language is not None:
-                    verdict: Verdict | None = get_verdict_db(submission.total_verdict_id)
-                    if verdict is not None:
-                        return JSONResponse({
-                            'id': submission.id,
-                            'author_user_username': user.username,
-                            'problem_id': problem.id,
-                            'problem_name': problem.name,
-                            'language_name': language.name,
-                            'language_version': language.version,
-                            'time_sent': submission.time_sent.strftime('%Y-%m-%d %H:%M:%S'),
-                            'total_verdict': verdict.text
-                        })
-                    else:
-                        raise HTTPException(status_code=404, detail="Verdict does not exist")
-                else:
-                    raise HTTPException(status_code=404, detail="Language does not exist")
-            else:
-                raise HTTPException(status_code=404, detail="Problem does not exist")
-        else:
-            raise HTTPException(status_code=404, detail="User does not exist")
-    else:
-        raise HTTPException(status_code=404, detail="Submission does not exist")
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("""
+            SELECT 
+                submissions.id AS id,
+                users.username AS author_user_username,
+                problems.id AS problem_id,
+                problems.name AS problem_name,
+                languages.name AS language_name,
+                languages.version AS language_version,
+                submissions.time_sent AS time_sent,
+                verdicts.text AS total_verdict
+            FROM submissions
+            INNER JOIN users ON submissions.author_user_id = users.id
+            INNER JOIN problems ON submissions.problem_id = problems.id
+            INNER JOIN languages ON submissions.language_id = languages.id
+            INNER JOIN verdicts ON submissions.total_verdict_id = verdicts.id
+            WHERE submissions.id = %(id)s AND submissions.checked = 1
+            LIMIT 1
+        """, {'id': submission_id})
+        submission: Any = cursor.fetchone()
+        if submission is None:
+            raise HTTPException(status_code=404, detail="Submission does not exist")
+        return JSONResponse(submission)
 
 @app.get("/users/{username}/submissions/public")
 def get_submissions_public_by_user(username: str)-> JSONResponse:
-    res: list[dict[str, str | int]] = []
-    submissions: list[SubmissionPublic] = get_submissions_public_by_user_db(username)
-    for submission in submissions:
-        problem: Problem | None = get_problem_db(submission.problem_id)
-        if problem is not None:
-            language: Language | None = get_language_by_id_db(submission.language_id)
-            if language is not None:
-                verdict: Verdict | None = get_verdict_db(submission.total_verdict_id)
-                if verdict is not None:
-                    res.append({
-                        'id': submission.id,
-                        'author_user_username': username,
-                        'problem_id': problem.id,
-                        'problem_name': problem.name,
-                        'language_name': language.name,
-                        'language_version': language.version,
-                        'time_sent': submission.time_sent.strftime('%Y-%m-%d %H:%M:%S'),
-                        'total_verdict': verdict.text
-                    })
-                else:
-                    raise HTTPException(status_code=404, detail="Verdict does not exist")
-            else:
-                raise HTTPException(status_code=404, detail="Language does not exist")
-        else:
-            raise HTTPException(status_code=404, detail="Problem does not exist")
-    return JSONResponse({
-        'submissions': res
-    })
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("SELECT 1 FROM users WHERE username = BINARY %(username)s LIMIT 1", {'username': username})
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="User does not exist")
+        cursor.execute("""
+            SELECT 
+                submissions.id AS id,
+                users.username AS author_user_username,
+                problems.id AS problem_id,
+                problems.name AS problem_name,
+                languages.name AS language_name,
+                languages.version AS language_version,
+                submissions.time_sent AS time_sent,
+                verdicts.text AS total_verdict
+            FROM submissions
+            INNER JOIN users ON submissions.author_user_id = users.id
+            INNER JOIN problems ON submissions.problem_id = problems.id
+            INNER JOIN languages ON submissions.language_id = languages.id
+            INNER JOIN verdicts ON submissions.total_verdict_id = verdicts.id
+            WHERE users.username = BINARY %(username)s AND submissions.checked = 1
+        """, {'username': username})
+        return JSONResponse({
+            'submissions': cursor.fetchall()
+        })
 
 @app.get("/users/{username}/submissions/public/problems/{problem_id}")
 def get_submissions_public_by_user_and_problem(username: str, problem_id: int)-> JSONResponse:
-    res: list[dict[str, str | int]] = []
-    submissions: list[SubmissionPublic] = get_submissions_public_by_user_and_problem_db(username, problem_id)
-    for submission in submissions:
-        problem: Problem | None = get_problem_db(submission.problem_id)
-        if problem is not None:
-            language: Language | None = get_language_by_id_db(submission.language_id)
-            if language is not None:
-                verdict: Verdict | None = get_verdict_db(submission.total_verdict_id)
-                if verdict is not None:
-                    res.append({
-                        'id': submission.id,
-                        'author_user_username': username,
-                        'problem_id': problem.id,
-                        'problem_name': problem.name,
-                        'language_name': language.name,
-                        'language_version': language.version,
-                        'time_sent': submission.time_sent.strftime('%Y-%m-%d %H:%M:%S'),
-                        'total_verdict': verdict.text
-                    })
-                else:
-                    raise HTTPException(status_code=404, detail="Verdict does not exist")
-            else:
-                raise HTTPException(status_code=404, detail="Language does not exist")
-        else:
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("SELECT 1 FROM users WHERE username = BINARY %(username)s LIMIT 1", {'username': username})
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="User does not exist")
+        cursor.execute("SELECT 1 FROM problems WHERE id = %(id)s LIMIT 1", {'id': problem_id})
+        if cursor.fetchone() is None:
             raise HTTPException(status_code=404, detail="Problem does not exist")
-    return JSONResponse({
-        'submissions': res
-    })
-
-@app.websocket("/task")
-async def websocket_endpoint(websocket: WebSocket):
-    await websocket.accept()
-    submission_id: int = 1
-    code: str = await websocket.receive_text()
-    language: str = await websocket.receive_text()
-    await websocket.send_text(f"Your request is recieved")
-    create_files_result: CreateFilesResult = await loop.run_in_executor(fs_executor, create_files_wrapper, submission_id, code, language)
-    match create_files_result.status:
-        case 0:
-            await websocket.send_text(f"Saved succesfully")
-            if language == 'C++ 17 (g++ 11.2)' or language == 'C 17 (gcc 11.2)':
-                await websocket.send_text(f"Compiled succesfully")
-            test_cases: list[tuple[str, str]] = [
-                ('1', '1'),
-                ('2', '4'),
-                ('3', '9'),
-                ('4', '16'),
-                ('1000', '1000000'),
-                ('1000000', '1000000000000')
-            ]
-            count: int = 1
-            correct: int = 0
-            for test_case in test_cases:
-                result: TestResult = (await loop.run_in_executor(checker_executor, check_test_case_wrapper, submission_id, count, language, test_case[0], test_case[1]))
-                match result.status:
-                    case 0:
-                        await websocket.send_text(f"Test case #{count}: Correct Answer in {result.time}ms ({result.cpu_time}ms)")
-                        correct += 1
-                    case 1:
-                        await websocket.send_text(f"Test case #{count}: Wrong Answer in {result.time}ms ({result.cpu_time}ms)")
-                    case 6:
-                        await websocket.send_text(f"Test case #{count}: Internal Server Error")
-                    case _:
-                        await websocket.send_text(f"Test case #{count}: Unexpected error")
-                count += 1
-            await websocket.send_text(f"Total result: {correct}/{count - 1}")
-        case 5:
-            await websocket.send_text(f"Error in compilation or file creating occured")
-            await websocket.send_text(f"Description: {create_files_result.description}")
-        case 6:
-            await websocket.send_text(f"Internal Server Error")
-        case _:
-            await websocket.send_text(f"Unexpected Error")
-    fs_executor.submit(delete_files_wrapper, submission_id)
-    await websocket.close()
-
-@app.get("/test-submit")
-async def test_submit(id: int, language: str) -> str:
-    match language:
-        case 'C++ 17 (g++ 11.2)':
-            code: str = '#include <iostream>\nusing namespace std;\n\nint main() {\n    long long a;\n    cin >> a;\n    cout << a * a;\n}'
-        case 'C 17 (gcc 11.2)':
-            code: str = '#include <stdio.h>\n\nint main() {\n    long long a;\n    scanf("%lld", &a);\n    printf("%lld", a * a);\n}'
-        case 'Python 3 (3.10)':
-            code: str = 'print(int(input()) ** 2)'
-        case _:
-            return 'Error'
-    if (await loop.run_in_executor(fs_executor, create_files_wrapper, id, code, language)).status == 0:
-        result: TestResult = await loop.run_in_executor(checker_executor, check_test_case_wrapper, id, id, language, '1', '1')
-        fs_executor.submit(delete_files_wrapper, id)
-        return f"{result.time}ms ({result.cpu_time}ms)"
-    return 'Error'
+        cursor.execute("""
+            SELECT 
+                submissions.id AS id,
+                users.username AS author_user_username,
+                problems.id AS problem_id,
+                problems.name AS problem_name,
+                languages.name AS language_name,
+                languages.version AS language_version,
+                submissions.time_sent AS time_sent,
+                verdicts.text AS total_verdict
+            FROM submissions
+            INNER JOIN users ON submissions.author_user_id = users.id
+            INNER JOIN problems ON submissions.problem_id = problems.id
+            INNER JOIN languages ON submissions.language_id = languages.id
+            INNER JOIN verdicts ON submissions.total_verdict_id = verdicts.id
+            WHERE users.username = BINARY %(username)s AND problems.id = %(problem_id)s AND submissions.checked = 1
+        """, {'username': username})
+        return JSONResponse({
+            'submissions': cursor.fetchall()
+        })

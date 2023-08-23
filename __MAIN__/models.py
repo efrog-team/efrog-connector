@@ -111,6 +111,7 @@ class Submission(BaseModel):
     checked: int
     compiled: int
     compilation_details: str
+    total_verdict_id: int
 
 class SubmissionPublic(BaseModel):
     id: int

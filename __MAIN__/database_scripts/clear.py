@@ -28,10 +28,7 @@ def clear() -> None:
         with connection.cursor(dictionary=True) as cursor:
             with open(f"{app_path}/init.sql") as file:
                 for line in file.read().split(";")[2:]:
-                    try:
-                        cursor.execute(line.strip())
-                    except:
-                        pass
+                    cursor.execute(line.strip())
 
 if __name__ == "__main__":
     clear()
