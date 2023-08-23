@@ -310,7 +310,7 @@
 
 * ### GET "/problems?start={start}&limit={limit}" — get all public problems
     * Request headers:
-        * Authroization: string (access token)
+        * empty
     * Request parameters:
         * start: integer?
         * limit: integer?
@@ -460,7 +460,7 @@
     * Request headers:
         * Authroization: string (access token)
     * Request parameters:
-        * username: string
+        * problem_id: integer
     * Request body:
         * empty
     * Response body:
