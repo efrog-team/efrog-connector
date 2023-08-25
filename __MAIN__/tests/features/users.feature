@@ -1,5 +1,9 @@
 Feature: Users
 
+    Scenario: Init
+        Then clear the database
+        Then add another user to the database
+
     Scenario Outline: Add a user with an empty <field>
         Given all data of the correct user
         But with an empty <field>
@@ -13,9 +17,9 @@ Feature: Users
             |     name |
             | password |
 
-    Scenario: Add a user with a taken username
+    Scenario: Add a user with the taken username
         Given all data of the correct user
-        But with a taken username
+        But with the taken username
         And put into body
         When makes POST request /users
         Then gets status 409
@@ -33,15 +37,15 @@ Feature: Users
         When makes POST request /users
         Then gets status 200
 
-    Scenario: Get a token with a wrong password
+    Scenario: Get a token with wrong password
         Given username and password of the correct user
-        But with a wrong password
+        But with wrong password
         And put into body
         When makes POST request /token
         Then gets status 401
 
-    Scenario: Get a token with the non-excisting user
-        Given username and password of the non-excisting user
+    Scenario: Get a token with a non-existing user
+        Given username and password of a non-existing user
         And put into body
         When makes POST request /token
         Then gets status 401
@@ -65,7 +69,7 @@ Feature: Users
         And equals to the correct user
 
     Scenario: Get a user that does not exist
-        Given username of the non-excisting user
+        Given username of a non-existing user
         And put into params
         When makes GET request /users/{username}
         Then gets status 404
@@ -86,12 +90,12 @@ Feature: Users
 
         Given username of another user
         And put into params
-        Given all data of the new user
+        Given all data of a new user
         And put into body
         When makes PUT request /users/{username}
         Then gets status 403
 
-    Scenario: Update a user with a taken username
+    Scenario: Update a user with the taken username
         Given username and password of the correct user
         And put into body
         When makes POST request /token
@@ -100,8 +104,8 @@ Feature: Users
         
         Given username of the correct user
         And put into params
-        Given all data of the new user
-        But with a taken username
+        Given all data of a new user
+        But with the taken username
         And put into body
         When makes PUT request /users/{username}
         Then gets status 409
@@ -115,7 +119,7 @@ Feature: Users
         
         Given username of the correct user
         And put into params
-        Given all data of the new user
+        Given all data of a new user
         But with an unsopported username
         And put into body
         When makes PUT request /users/{username}
@@ -130,7 +134,7 @@ Feature: Users
         
         Given username of the correct user
         And put into params
-        Given all data of the new user
+        Given all data of a new user
         And put into body
         When makes PUT request /users/{username}
         Then gets status 200

@@ -36,7 +36,7 @@ app.add_middleware(
 @app.get("/")
 def root() -> JSONResponse:
     return JSONResponse({
-        'message': "This is the root endpoint of the API. This response contains different data types. If they don't match its names, check the documentation",
+        'message': "This is the root endpoint of the API. This response contains different data types. If they do not match its names, check the documentation",
         'string': 'a',
         'integer': 1,
         'boolean': True,
@@ -209,7 +209,7 @@ def put_team(team_name: str, team: TeamRequestUpdate, authorization: Annotated[s
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
         try:
-            cursor.execute("UPDATE teams SET name = %(new_name)s WHERE name = BINARY %(name)s AND owner_user_id = %(owner_user_id)s", {'new_name': team.name, 'name': team_name, 'owner_user_id': token.id})
+            cursor.execute("UPDATE teams SET name = %(new_name)s WHERE name = BINARY %(name)s AND owner_user_id = %(owner_user_id)s AND individual = 0", {'new_name': team.name, 'name': team_name, 'owner_user_id': token.id})
         except IntegrityError:
             raise HTTPException(status_code=409, detail="This name is already taken")
         if cursor.rowcount == 0:
@@ -264,7 +264,7 @@ def put_activate_team(team_name: str, authorization: Annotated[str | None, Heade
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
-        cursor.execute("UPDATE teams SET active = 1 WHERE name = BINARY %(name)s AND owner_user_id = %(owner_user_id)s", {'name': team_name, 'owner_user_id': token.id})
+        cursor.execute("UPDATE teams SET active = 1 WHERE name = BINARY %(name)s AND owner_user_id = %(owner_user_id)s AND individual = 0", {'name': team_name, 'owner_user_id': token.id})
         if cursor.rowcount == 0:
             detect_error_teams(cursor, team_name, token.id, False, False)
     return JSONResponse({})
@@ -274,7 +274,7 @@ def put_deactivate_team(team_name: str, authorization: Annotated[str | None, Hea
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
-        cursor.execute("UPDATE teams SET active = 0 WHERE name = BINARY %(name)s AND owner_user_id = %(owner_user_id)s", {'name': team_name, 'owner_user_id': token.id})
+        cursor.execute("UPDATE teams SET active = 0 WHERE name = BINARY %(name)s AND owner_user_id = %(owner_user_id)s AND individual = 0", {'name': team_name, 'owner_user_id': token.id})
         if cursor.rowcount == 0:
             detect_error_teams(cursor, team_name, token.id, False, False)
     return JSONResponse({})
@@ -287,7 +287,7 @@ def get_check_if_team_can_be_deleted(team_name: str) -> JSONResponse:
             SELECT 1
             FROM competition_participants
             INNER JOIN teams ON competition_participants.team_id = teams.id
-            WHERE teams.name = BINARY %(team_name)s
+            WHERE teams.name = BINARY %(team_name)s AND teams.individual = 0
         """, {'team_name': team_name})
         return JSONResponse({
             'can': len(cursor.fetchall()) == 0
@@ -302,7 +302,7 @@ def delete_team(team_name: str, authorization: Annotated[str | None, Header()]) 
             DELETE team_members
             FROM team_members
             INNER JOIN teams ON team_members.team_id = teams.id
-            WHERE teams.name = BINARY %(name)s AND owner_user_id = %(owner_user_id)s
+            WHERE teams.name = BINARY %(name)s AND teams.owner_user_id = %(owner_user_id)s AND teams.individual = 0
         """, {'name': team_name, 'owner_user_id': token.id})
         cursor.execute("DELETE FROM teams WHERE name = BINARY %(name)s AND individual = 0 AND owner_user_id = %(owner_user_id)s", {'name': team_name, 'owner_user_id': token.id})
         if cursor.rowcount == 0:
@@ -314,11 +314,20 @@ def detect_error_team_members(cursor: MySQLCursorAbstract, team_name: str, owner
     team: Any = cursor.fetchone()
     if team is None:
         raise HTTPException(status_code=404, detail="Team does not exist")
-    if not ignore_ownership or team['owner_user_id'] != owner_user_id:
+    if not ignore_ownership and team['owner_user_id'] != owner_user_id:
         raise HTTPException(status_code=403, detail="You are not the owner of the team")
     cursor.execute("SELECT 1 FROM users WHERE username = BINARY %(username)s LIMIT 1", {'username': member_username})
     if cursor.fetchone() is None:
         raise HTTPException(status_code=404, detail="User does not exist")
+    cursor.execute("""
+            SELECT 1
+            FROM users
+            INNER JOIN team_members ON team_members.member_user_id = users.id
+            INNER JOIN teams ON teams.id = team_members.team_id
+            WHERE teams.name = BINARY %(name)s AND teams.individual = 0 AND users.username = BINARY %(username)s
+        """, {'name': team_name, 'username': member_username})
+    if cursor.fetchone() is None:
+        raise HTTPException(status_code=404, detail="User is not a member of the team")
     if not ignore_internal_server_error:
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
@@ -374,7 +383,7 @@ def get_team_members(team_name: str, only_coaches: bool = False, only_contestant
             FROM team_members
             INNER JOIN users ON team_members.member_user_id = users.id
             INNER JOIN teams ON team_members.team_id = teams.id
-            WHERE teams.name = BINARY %(team_name)s
+            WHERE teams.name = BINARY %(team_name)s AND individual = 0
         """ + filter_conditions, {'team_name': team_name})
         team_members: list[Any] = list(cursor.fetchall())
         if len(team_members) == 0:
@@ -399,7 +408,7 @@ def get_team_member(team_name: str, member_username: str) -> JSONResponse:
             FROM team_members
             INNER JOIN users ON team_members.member_user_id = users.id
             INNER JOIN teams ON team_members.team_id = teams.id
-            WHERE teams.name = BINARY %(team_name)s AND users.username = %(member_username)s
+            WHERE teams.name = BINARY %(team_name)s AND individual = 0 AND users.username = %(member_username)s
             LIMIT 1
         """, {'team_name': team_name, 'member_username': member_username})
         team_member: Any = cursor.fetchone()
@@ -423,7 +432,7 @@ def put_make_team_member_coach(team_name: str, member_username: str, authorizati
             INNER JOIN users ON team_members.member_user_id = users.id
             INNER JOIN teams ON team_members.team_id = teams.id
             SET team_members.coach = 1
-            WHERE teams.name = BINARY %(team_name)s AND teams.owner_user_id = %(owner_user_id)s AND users.username = %(member_username)s
+            WHERE teams.name = BINARY %(team_name)s AND teams.individual = 0 AND teams.owner_user_id = %(owner_user_id)s AND users.username = %(member_username)s
         """, {'team_name': team_name, 'owner_user_id': token.id, 'member_username': member_username})
         if cursor.rowcount == 0:
             detect_error_team_members(cursor, team_name, token.id, member_username, False, False)
@@ -439,7 +448,7 @@ def put_make_team_member_contestant(team_name: str, member_username: str, author
             INNER JOIN users ON team_members.member_user_id = users.id
             INNER JOIN teams ON team_members.team_id = teams.id
             SET team_members.coach = 0
-            WHERE teams.name = BINARY %(team_name)s AND teams.owner_user_id = %(owner_user_id)s AND users.username = BINARY %(member_username)s
+            WHERE teams.name = BINARY %(team_name)s AND teams.individual = 0 AND teams.owner_user_id = %(owner_user_id)s AND users.username = BINARY %(member_username)s
         """, {'team_name': team_name, 'owner_user_id': token.id, 'member_username': member_username})
         if cursor.rowcount == 0:
             detect_error_team_members(cursor, team_name, token.id, member_username, False, False)
@@ -448,33 +457,41 @@ def put_make_team_member_contestant(team_name: str, member_username: str, author
 @app.put("/teams/{team_name}/members/{member_username}/confirm")
 def put_confirm_team_member(team_name: str, member_username: str, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     token: Token = decode_token(authorization)
+    if token.username != member_username:
+        raise HTTPException(status_code=403, detail="You are trying to change not your membership")
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
         cursor.execute("""
             UPDATE team_members
             INNER JOIN users ON team_members.member_user_id = users.id
             INNER JOIN teams ON team_members.team_id = teams.id
-            SET team_members.confirmed = 1
-            WHERE teams.name = BINARY %(team_name)s AND teams.owner_user_id = %(owner_user_id)s AND users.username = BINARY %(member_username)s
-        """, {'team_name': team_name, 'owner_user_id': token.id, 'member_username': member_username})
+            SET 
+                team_members.confirmed = 1,
+                team_members.declined = 0
+            WHERE teams.name = BINARY %(team_name)s AND teams.individual = 0 AND users.username = BINARY %(member_username)s
+        """, {'team_name': team_name, 'member_username': member_username})
         if cursor.rowcount == 0:
-            detect_error_team_members(cursor, team_name, token.id, member_username, False, False)
+            detect_error_team_members(cursor, team_name, -1, member_username, True, False)
     return JSONResponse({})
 
 @app.put("/teams/{team_name}/members/{member_username}/decline")
 def put_decline_team_member(team_name: str, member_username: str, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     token: Token = decode_token(authorization)
+    if token.username != member_username:
+        raise HTTPException(status_code=403, detail="You are trying to change not your membership")
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
         cursor.execute("""
             UPDATE team_members
             INNER JOIN users ON team_members.member_user_id = users.id
             INNER JOIN teams ON team_members.team_id = teams.id
-            SET team_members.declined = 1
-            WHERE teams.name = BINARY %(team_name)s AND teams.owner_user_id = %(owner_user_id)s AND users.username = BINARY %(member_username)s
-        """, {'team_name': team_name, 'owner_user_id': token.id, 'member_username': member_username})
+            SET 
+                team_members.confirmed = 0,
+                team_members.declined = 1
+            WHERE teams.name = BINARY %(team_name)s AND teams.individual = 0 AND users.username = BINARY %(member_username)s
+        """, {'team_name': team_name, 'member_username': member_username})
         if cursor.rowcount == 0:
-            detect_error_team_members(cursor, team_name, token.id, member_username, False, False)
+            detect_error_team_members(cursor, team_name, -1, member_username, True, False)
     return JSONResponse({})
 
 @app.delete("/teams/{team_name}/members/{member_username}")
@@ -487,7 +504,7 @@ def delete_team_member(team_name: str, member_username: str, authorization: Anno
             FROM team_members
             INNER JOIN users ON team_members.member_user_id = users.id
             INNER JOIN teams ON team_members.team_id = teams.id
-            WHERE teams.name = BINARY %(team_name)s AND teams.owner_user_id = %(owner_user_id)s AND users.username = BINARY %(member_username)s
+            WHERE teams.name = BINARY %(team_name)s AND teams.individual = 0 AND teams.owner_user_id = %(owner_user_id)s AND users.username = BINARY %(member_username)s
         """, {'team_name': team_name, 'owner_user_id': token.id, 'member_username': member_username})
         if cursor.rowcount == 0:
             detect_error_team_members(cursor, team_name, token.id, member_username, False, False)

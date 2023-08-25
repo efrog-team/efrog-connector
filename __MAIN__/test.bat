@@ -1,3 +1,2 @@
-clear_db
 pytest
 clear_db
