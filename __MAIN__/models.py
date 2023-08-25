@@ -60,3 +60,15 @@ class SubmissionRequest(BaseModel):
     code: str
     language_name: str
     language_version: str
+
+class DebugRequest(BaseModel):
+    code: str
+    language_name: str
+    language_version: str
+    input: str
+
+class DebugRequestMany(BaseModel):
+    code: str
+    language_name: str
+    language_version: str
+    inputs: list[str]

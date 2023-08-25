@@ -21,7 +21,7 @@ CREATE TABLE teams (
     individual BOOLEAN NOT NULL,
     PRIMARY KEY (id),
     FOREIGN KEY (owner_user_id) REFERENCES users(id),
-    UNIQUE KEY (name)
+    UNIQUE KEY (name, individual)
 );
 
 CREATE TABLE team_members (
@@ -152,6 +152,15 @@ CREATE TABLE submission_results (
     FOREIGN KEY (submission_id) REFERENCES submissions(id),
     FOREIGN KEY (test_case_id) REFERENCES test_cases(id),
     FOREIGN KEY (verdict_id) REFERENCES verdicts(id)
+);
+
+CREATE TABLE debug (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    author_user_id BIGINT UNSIGNED NOT NULL,
+    number_of_inputs INT UNSIGNED NOT NULL,
+    time_sent DATETIME NOT NULL,
+    PRIMARY KEY (id),
+    FOREIGN KEY (author_user_id) REFERENCES users(id)
 );
 
 INSERT INTO languages (name, version, supported) VALUES ('Python 3', '3.10', 1);

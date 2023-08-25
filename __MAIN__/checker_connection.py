@@ -18,8 +18,7 @@ class DebugResultCTypes(Structure):
                 ('time', c_int),
                 ('cpu_time', c_int),
                 ('memory', c_int),
-                ('output', c_char_p),
-                ('description', c_char_p)]
+                ('output', c_char_p)]
 
 class CreateFilesResult:
     def __init__(self, status: int, description: str) -> None:
@@ -34,13 +33,12 @@ class TestResult:
         self.memory = memory
 
 class DebugResult:
-    def __init__(self, status: int, time: int, cpu_time: int, memory: int, output: str, description: str) -> None:
+    def __init__(self, status: int, time: int, cpu_time: int, memory: int, output: str) -> None:
         self.status = status
         self.time = time
         self.cpu_time = cpu_time
         self.memory = memory
         self.output = output
-        self.description = description
 
 class Library:
 
@@ -76,7 +74,7 @@ class Library:
 
     def debug(self, debug_submission_id: int, debug_test_id: int, language: str, input: str) -> DebugResult:
         result: Any = self.lib.debug(debug_submission_id, debug_test_id, language.encode('utf-8'), input.encode('utf-8')).contents
-        return DebugResult(result.status, result.time, result.cpu_time, result.memory, result.output.decode('utf-8'), result.description.decode('utf-8'))
+        return DebugResult(result.status, result.time, result.cpu_time, result.memory, result.output.decode('utf-8'))
 
     def delete_files(self, submission_id: int) -> int:
         return self.lib.delete_files(submission_id)

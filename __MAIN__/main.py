@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Header, WebSocket
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from models import UserRequest, UserToken, UserRequestUpdate, TeamRequest, TeamRequestUpdate, TeamMemberRequest, ProblemRequest, ProblemRequestUpdate, TestCaseRequest, TestCaseRequestUpdate, SubmissionRequest
+from models import UserRequest, UserToken, UserRequestUpdate, TeamRequest, TeamRequestUpdate, TeamMemberRequest, ProblemRequest, ProblemRequestUpdate, TestCaseRequest, TestCaseRequestUpdate, SubmissionRequest, DebugRequest, DebugRequestMany
 from mysql.connector.abstracts import MySQLCursorAbstract
 from mysql.connector.errors import IntegrityError
 from config import database_config
@@ -9,7 +9,7 @@ from connection_cursor import ConnectionCursor
 from security.hash import hash_hex
 from security.jwt import encode_token, Token, decode_token
 from typing import Annotated
-from checker_connection import Library, TestResult, CreateFilesResult
+from checker_connection import Library, TestResult, CreateFilesResult, DebugResult
 from asyncio import run, Event
 from concurrent.futures import ThreadPoolExecutor
 from current_websocket import CurrentWebsocket
@@ -18,6 +18,8 @@ from json import dumps
 
 checking_queue: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=4)
 current_websockets: dict[int, CurrentWebsocket] = {}
+
+debugging_queue: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=2)
 
 lib: Library = Library()
 
@@ -104,6 +106,16 @@ def get_user(username: str) -> JSONResponse:
             raise HTTPException(status_code=404, detail="User from the token does not exist")
         return JSONResponse(user)
 
+@app.get("/users/{username}/id")
+def get_user_id(username: str) -> JSONResponse:  
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("SELECT id FROM users WHERE username = BINARY %(username)s LIMIT 1", {'username': username})
+        user: Any = cursor.fetchone()
+        if user is None:
+            raise HTTPException(status_code=404, detail="User from the token does not exist")
+        return JSONResponse(user)
+
 @app.put("/users/{username}")
 def put_user(username: str, user: UserRequestUpdate, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     token: Token = decode_token(authorization)
@@ -111,8 +123,9 @@ def put_user(username: str, user: UserRequestUpdate, authorization: Annotated[st
         raise HTTPException(status_code=403, detail="You are trying to change not your data")
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
-        cursor.execute("SELECT 1 FROM users WHERE username = BINARY %(username)s LIMIT 1", {'username': username})
-        if cursor.fetchone() is None:
+        cursor.execute("SELECT username, email, name, password FROM users WHERE username = BINARY %(username)s LIMIT 1", {'username': username})
+        user_db: Any = cursor.fetchone()
+        if user_db is None:
             raise HTTPException(status_code=404, detail="User does not exist")
         if user.email is not None and user.email != "":
             try:
@@ -125,15 +138,21 @@ def put_user(username: str, user: UserRequestUpdate, authorization: Annotated[st
             cursor.execute("UPDATE users SET password = %(password)s WHERE username = BINARY %(username)s", {'password': hash_hex(user.password), 'username': username})
         if user.username is not None and user.username != "":
             if len(user.username) < 3:
+                cursor.execute("UPDATE users SET email = %(email)s WHERE username = BINARY %(username)s", {'email': user_db['email'], 'username': username})
+                cursor.execute("UPDATE users SET name = %(name)s WHERE username = BINARY %(username)s", {'name': user_db['name'], 'username': username})
+                cursor.execute("UPDATE users SET password = %(password)s WHERE username = BINARY %(username)s", {'password': user_db['password'], 'username': username})
                 raise HTTPException(status_code=409, detail="Username is too short")
             try:
                 cursor.execute("UPDATE users SET username = %(new_username)s WHERE username = BINARY %(username)s", {'new_username': user.username, 'username': username})
             except IntegrityError:
+                cursor.execute("UPDATE users SET email = %(email)s WHERE username = BINARY %(username)s", {'email': user_db['email'], 'username': username})
+                cursor.execute("UPDATE users SET name = %(name)s WHERE username = BINARY %(username)s", {'name': user_db['name'], 'username': username})
+                cursor.execute("UPDATE users SET password = %(password)s WHERE username = BINARY %(username)s", {'password': user_db['password'], 'username': username})
                 raise HTTPException(status_code=409, detail="This username is already taken")
     return JSONResponse({})
 
 def detect_error_teams(cursor: MySQLCursorAbstract, team_name: str, owner_user_id: int, ignore_ownership: bool, ignore_internal_server_error: bool) -> None:
-    cursor.execute("SELECT owner_user_id FROM teams WHERE name = BINARY %(name)s LIMIT 1", {'name': team_name})
+    cursor.execute("SELECT owner_user_id FROM teams WHERE name = BINARY %(name)s AND individual = 0 LIMIT 1", {'name': team_name})
     team: Any = cursor.fetchone()
     if team is None:
         raise HTTPException(status_code=404, detail="Team does not exist")
@@ -172,7 +191,7 @@ def get_team(team_name: str) -> JSONResponse:
                 teams.active AS active
             FROM teams
             INNER JOIN users ON teams.owner_user_id = users.id
-            WHERE teams.name = BINARY %(name)s
+            WHERE teams.name = BINARY %(name)s AND teams.individual = 0
             LIMIT 1
             """, {'name': team_name})
         team: Any = cursor.fetchone()
@@ -285,13 +304,13 @@ def delete_team(team_name: str, authorization: Annotated[str | None, Header()]) 
             INNER JOIN teams ON team_members.team_id = teams.id
             WHERE teams.name = BINARY %(name)s AND owner_user_id = %(owner_user_id)s
         """, {'name': team_name, 'owner_user_id': token.id})
-        cursor.execute("DELETE FROM teams WHERE name = BINARY %(name)s AND owner_user_id = %(owner_user_id)s", {'name': team_name, 'owner_user_id': token.id})
+        cursor.execute("DELETE FROM teams WHERE name = BINARY %(name)s AND individual = 0 AND owner_user_id = %(owner_user_id)s", {'name': team_name, 'owner_user_id': token.id})
         if cursor.rowcount == 0:
             detect_error_teams(cursor, team_name, token.id, False, False)
     return JSONResponse({})
 
 def detect_error_team_members(cursor: MySQLCursorAbstract, team_name: str, owner_user_id: int, member_username: str, ignore_ownership: bool, ignore_internal_server_error: bool) -> None:
-    cursor.execute("SELECT owner_user_id FROM teams WHERE name = BINARY %(name)s LIMIT 1", {'name': team_name})
+    cursor.execute("SELECT owner_user_id FROM teams WHERE name = BINARY %(name)s AND individual = 0 LIMIT 1", {'name': team_name})
     team: Any = cursor.fetchone()
     if team is None:
         raise HTTPException(status_code=404, detail="Team does not exist")
@@ -315,7 +334,7 @@ def post_team_member(team_member: TeamMemberRequest, team_name: str, authorizati
         if member is None:
             raise HTTPException(status_code=404, detail="User does not exist")
         member_user_id: int = member['id']
-        cursor.execute("SELECT id, owner_user_id FROM teams WHERE name = BINARY %(name)s LIMIT 1", {'name': team_name})
+        cursor.execute("SELECT id, owner_user_id FROM teams WHERE name = BINARY %(name)s AND individual = 0 LIMIT 1", {'name': team_name})
         team: Any = cursor.fetchone()
         if team is None:
             raise HTTPException(status_code=404, detail="Team does not exist")
@@ -359,11 +378,11 @@ def get_team_members(team_name: str, only_coaches: bool = False, only_contestant
         """ + filter_conditions, {'team_name': team_name})
         team_members: list[Any] = list(cursor.fetchall())
         if len(team_members) == 0:
-            cursor.execute("SELECT 1 FROM teams WHERE teams.name = BINARY %(team_name)s LIMIT 1", {'team_name': team_name})
+            cursor.execute("SELECT 1 FROM teams WHERE name = BINARY %(team_name)s AND individual = 0 LIMIT 1", {'team_name': team_name})
             if cursor.fetchone() is None:
                 raise HTTPException(status_code=404, detail="Team does not exist")
         return JSONResponse({
-            'teams': team_members
+            'team_members': team_members
         })
 
 @app.get("/teams/{team_name}/members/{member_username}")
@@ -385,7 +404,7 @@ def get_team_member(team_name: str, member_username: str) -> JSONResponse:
         """, {'team_name': team_name, 'member_username': member_username})
         team_member: Any = cursor.fetchone()
         if team_member is None:
-            cursor.execute("SELECT 1 FROM teams WHERE teams.name = BINARY %(team_name)s LIMIT 1", {'team_name': team_name})
+            cursor.execute("SELECT 1 FROM teams WHERE name = BINARY %(team_name)s AND individual = 0 LIMIT 1", {'team_name': team_name})
             if cursor.fetchone() is None:
                 raise HTTPException(status_code=404, detail="Team does not exist")
             cursor.execute("SELECT 1 FROM users WHERE username = BINARY %(username)s LIMIT 1", {'username': member_username})
@@ -866,7 +885,7 @@ def delete_test_case(problem_id: int, test_case_id: int, authorization: Annotate
             detect_error_problems(cursor, problem_id, token.id, False, False, False)
     return JSONResponse({})
 
-def check_problem(submission_id: int, problem_id: int, code: str, language: str) -> None:
+def check_problem(submission_id: int, problem_id: int, code: str, language: str, no_realtime: bool) -> None:
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
         create_files_result: CreateFilesResult = lib.create_files(submission_id, code, language)
@@ -912,47 +931,50 @@ def check_problem(submission_id: int, problem_id: int, code: str, language: str)
                 INSERT INTO submission_results (submission_id, test_case_id, verdict_id, time_taken, cpu_time_taken, memory_taken)
                 VALUES (%(submission_id)s, %(test_case_id)s, %(verdict_id)s, %(time_taken)s, %(cpu_time_taken)s, %(memory_taken)s)
             """, {'submission_id': submission_id, 'test_case_id': test_case['id'], 'verdict_id': test_result.status + 2, 'time_taken': test_result.time, 'cpu_time_taken': test_result.cpu_time, 'memory_taken': test_result.memory})
-            run(current_websockets[submission_id].send_message(dumps({
-                'type': 'result',
-                'status': 200,
-                'count': index + 1,
-                'result': {
-                    'id': cursor.lastrowid,
-                    'submission_id': submission_id,
-                    'test_case_id': test_case['id'],
-                    'test_case_score': test_case['score'],
-                    'test_case_opened': test_case['opened'],
-                    'verdict_text': verdict['text'],
-                    'time_taken': test_result.time,
-                    'cpu_time_taken': test_result.cpu_time,
-                    'memory_taken': test_result.memory
-                }
-            })))
+            if not no_realtime:
+                run(current_websockets[submission_id].send_message(dumps({
+                    'type': 'result',
+                    'status': 200,
+                    'count': index + 1,
+                    'result': {
+                        'id': cursor.lastrowid,
+                        'submission_id': submission_id,
+                        'test_case_id': test_case['id'],
+                        'test_case_score': test_case['score'],
+                        'test_case_opened': test_case['opened'],
+                        'verdict_text': verdict['text'],
+                        'time_taken': test_result.time,
+                        'cpu_time_taken': test_result.cpu_time,
+                        'memory_taken': test_result.memory
+                    }
+                })))
             total_score += test_case['score']
             total_verdict = max(total_verdict, (test_result.status, verdict['text']))
-        run(current_websockets[submission_id].send_message(dumps({
-            'type': 'totals',
-            'status': 200,
-            'totals': {
-                'compiled': create_files_result.status == 0,
-                'compilation_details': create_files_result.description,
-                'correct_score': correct_score,
-                'total_score': total_score,
-                'total_verdict': total_verdict[1]
-            }
-        })))
+        if not no_realtime:
+            run(current_websockets[submission_id].send_message(dumps({
+                'type': 'totals',
+                'status': 200,
+                'totals': {
+                    'compiled': create_files_result.status == 0,
+                    'compilation_details': create_files_result.description,
+                    'correct_score': correct_score,
+                    'total_score': total_score,
+                    'total_verdict': total_verdict[1]
+                }
+            })))
         lib.delete_files(submission_id)
         cursor.execute("""
             UPDATE submissions
             SET checked = 1, correct_score = %(correct_score)s, total_score = %(total_score)s, total_verdict_id = %(total_verdict_id)s
             WHERE id = %(submission_id)s
         """, {'submission_id': submission_id, 'correct_score': correct_score, 'total_score': total_score, 'total_verdict_id': total_verdict[0] + 2})
-        current_websockets[submission_id].safe_set_flag()
-        if current_websockets[submission_id].websocket is None and current_websockets[submission_id].flag is None:
-            del current_websockets[submission_id]
+        if not no_realtime:
+            current_websockets[submission_id].safe_set_flag()
+            if current_websockets[submission_id].websocket is None and current_websockets[submission_id].flag is None:
+                del current_websockets[submission_id]
 
 @app.post("/submissions")
-def submit(submission: SubmissionRequest, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+def submit(submission: SubmissionRequest, authorization: Annotated[str | None, Header()], no_realtime:  bool = False) -> JSONResponse:
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
@@ -968,11 +990,57 @@ def submit(submission: SubmissionRequest, authorization: Annotated[str | None, H
         submission_id: int | None = cursor.lastrowid
         if submission_id is None:
             raise HTTPException(status_code=500, detail="Internal server error")
-        current_websockets[submission_id] = CurrentWebsocket(None, None, [])
-        checking_queue.submit(check_problem, submission_id, submission.problem_id, submission.code, f"{submission.language_name} ({submission.language_version})")
-        return JSONResponse({
-            'submission_id': submission_id
-        })
+        if not no_realtime:
+            current_websockets[submission_id] = CurrentWebsocket(None, None, [])
+            checking_queue.submit(check_problem, submission_id, submission.problem_id, submission.code, f"{submission.language_name} ({submission.language_version})", no_realtime)
+            return JSONResponse({
+                'submission_id': submission_id
+            })
+        else:
+            checking_queue.submit(check_problem, submission_id, submission.problem_id, submission.code, f"{submission.language_name} ({submission.language_version})", no_realtime).result()
+            cursor.execute("""
+                SELECT
+                    submissions.id AS id,
+                    users.username AS author_user_username,
+                    submissions.problem_id AS problem_id,
+                    problems.name AS problem_name,
+                    submissions.code AS code,
+                    languages.name AS language_name,
+                    languages.version AS language_version,
+                    submissions.time_sent AS time_sent,
+                    submissions.checked AS checked,
+                    submissions.compiled AS compiled,
+                    submissions.compilation_details AS compilation_details,
+                    submissions.correct_score AS correct_score,
+                    submissions.total_score AS total_score,
+                    verdicts.text AS total_verdict
+                FROM submissions
+                INNER JOIN users ON submissions.author_user_id = users.id
+                INNER JOIN problems ON submissions.problem_id = problems.id
+                INNER JOIN languages ON submissions.language_id = languages.id
+                INNER JOIN verdicts ON submissions.total_verdict_id = verdicts.id
+                WHERE submissions.id = %(submission_id)s
+                LIMIT 1
+            """, {'submission_id': submission_id})
+            submission_db: Any = cursor.fetchone()
+            cursor.execute("""
+                SELECT
+                    submission_results.id AS id,
+                    submission_results.submission_id AS submission_id,
+                    submission_results.test_case_id AS test_case_id,
+                    test_cases.score AS test_case_score,
+                    test_cases.opened AS test_case_opened,
+                    verdicts.text AS verdict_text,
+                    submission_results.time_taken AS time_taken,
+                    submission_results.cpu_time_taken AS cpu_time_taken,
+                    submission_results.memory_taken AS memory_taken
+                FROM submission_results
+                INNER JOIN test_cases ON submission_results.test_case_id = test_cases.id
+                INNER JOIN verdicts ON submission_results.verdict_id = verdicts.id
+                WHERE submission_results.submission_id = %(submission_id)s
+            """, {'submission_id': submission_id})
+            submission_db['results'] = cursor.fetchall()
+            return JSONResponse(submission_db)
 
 @app.get("/submissions/{submission_id}")
 def get_submission(submission_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
@@ -1165,4 +1233,85 @@ def get_submissions_public_by_user_and_problem(username: str, problem_id: int)->
         """, {'username': username, 'problem_id': problem_id})
         return JSONResponse({
             'submissions': cursor.fetchall()
+        })
+
+def run_debug(debug_submission_id: int, debug_language: str, debug_code: str, debug_inputs: list[str]) -> list[dict[str, str | int]]:
+    create_files_result: CreateFilesResult = lib.create_files(debug_submission_id, debug_code, debug_language)
+    results: list[dict[str, str | int]] = []
+    for index, debug_input in enumerate(debug_inputs):
+        if create_files_result.status == 0:
+            debug_result: DebugResult = lib.debug(debug_submission_id, index + 1, debug_language, debug_input)
+            if debug_result.status == 0:
+                results.append({
+                    'verdict': 'OK',
+                    'time': debug_result.time,
+                    'cpu_time': debug_result.cpu_time,
+                    'memory': debug_result.memory,
+                    'output': debug_result.output
+                })
+            else:
+                verdict: str = ''
+                match debug_result.status:
+                    case 2:
+                        verdict = 'Time limit exceeded (10s)'
+                    case 3:
+                        verdict = 'Memory limit exceeded (1024MB)'
+                    case 4:
+                        verdict = 'Runtime Error'
+                    case _:
+                        verdict = 'Internal Server Error'
+                results.append({
+                    'verdict': verdict,
+                    'time': debug_result.time,
+                    'cpu_time': debug_result.cpu_time,
+                    'memory': debug_result.memory,
+                    'output': debug_result.output
+                })
+        else:
+            results.append({
+                'verdict': 'Compilation Error',
+                'time': 0,
+                'cpu_time': 0,
+                'memory': 0,
+                'output': create_files_result.description
+            })
+    lib.delete_files(debug_submission_id)
+    return results
+
+@app.post("/debug")
+def post_debug(debug: DebugRequest, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("SELECT id FROM languages WHERE name = %(name)s AND version = %(version)s AND supported = 1 LIMIT 1", {'name': debug.language_name, 'version': debug.language_version})
+        language: Any = cursor.fetchone()
+        if language is None:
+            raise HTTPException(status_code=404, detail="Language does not exist")
+        cursor.execute("""
+            INSERT INTO debug (author_user_id, number_of_inputs, time_sent)
+            VALUES (%(author_user_id)s, 1, NOW())
+        """, {'author_user_id': token.id})
+        debug_submission_id: int | None = cursor.lastrowid
+        if debug_submission_id is None:
+            raise HTTPException(status_code=500, detail="Internal server error")
+        return JSONResponse(debugging_queue.submit(run_debug, debug_submission_id, f"{debug.language_name} ({debug.language_version})", debug.code, [debug.input]).result()[0])
+
+@app.post("/debug/many")
+def post_debug_many(debug: DebugRequestMany, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("SELECT id FROM languages WHERE name = %(name)s AND version = %(version)s AND supported = 1 LIMIT 1", {'name': debug.language_name, 'version': debug.language_version})
+        language: Any = cursor.fetchone()
+        if language is None:
+            raise HTTPException(status_code=404, detail="Language does not exist")
+        cursor.execute("""
+            INSERT INTO debug (author_user_id, number_of_inputs, time_sent)
+            VALUES (%(author_user_id)s, %(number_of_inputs)s, NOW())
+        """, {'author_user_id': token.id, 'number_of_inputs': len(debug.inputs)})
+        debug_submission_id: int | None = cursor.lastrowid
+        if debug_submission_id is None:
+            raise HTTPException(status_code=500, detail="Internal server error")
+        return JSONResponse({
+            'results': debugging_queue.submit(run_debug, debug_submission_id, f"{debug.language_name} ({debug.language_version})", debug.code, debug.inputs).result()
         })

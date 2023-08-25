@@ -529,18 +529,44 @@
     * Response body:
         * empty
 
-* ### POST "/submissions" — create a submission
+* ### POST "/submissions?no_realtime={no_realtime}" — create a submission
     * Request headers:
         * Authroization: string (access token)
     * Request parameters:
-        * empty
+        * no_realtime: boolean?
     * Request body:
         * problem_id: integer
         * code: string
         * language_name: string
         * language_version: string
-    * Response body:
+    * Response body (no_realtime=False):
         * submission_id: integer
+    * Response body (no_realtime=True):
+        * id: integer
+        * author_user_username: string
+        * problem_id: integer
+        * problem_name: string
+        * code: string
+        * language_name: string
+        * language_version: string
+        * time_sent: string (in the form of datetime %Y-%m-%d %H:%M:%S)
+        * checked: boolean
+        * compiled: boolean
+        * compilation_details: string
+        * correct_score: integer
+        * total_score: integer
+        * total_verdict: string
+        * results: array[ {
+            * id: integer
+            * submission_id: integer
+            * test_case_id: integer
+            * test_case_score: integer
+            * test_case_opened: boolean
+            * verdict_text: string
+            * time_taken: integer
+            * cpu_time_taken: integer
+            * memory_taken: integer
+        } ]
 
 * ### GET "/submissions/{submission_id}" — get a submission
     * Request headers:
