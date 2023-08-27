@@ -38,11 +38,11 @@ class ProblemRequest(BaseModel):
 class ProblemRequestUpdate(BaseModel):
     name: str | None
     statement: str | None
-    input_statement: str
-    output_statement: str
-    notes: str
-    time_restriction: int
-    memory_restriction: int
+    input_statement: str | None
+    output_statement: str | None
+    notes: str | None
+    time_restriction: int | None
+    memory_restriction: int | None
 
 class TestCaseRequest(BaseModel):
     input: str

@@ -17,7 +17,7 @@ Feature: Teams
         But with an empty <field>
         And put into body
         When makes POST request /teams
-        Then gets status 409
+        Then gets status 400
         Examples:
             | field    |
             |     name |
@@ -46,7 +46,7 @@ Feature: Teams
         But with an unsopported name
         And put into body
         When makes POST request /teams
-        Then gets status 409
+        Then gets status 400
 
     Scenario: Add a team
         Given username and password of the correct user
@@ -83,7 +83,7 @@ Feature: Teams
         And put into params
         When makes GET request /users/{username}/teams
         Then gets status 200
-        Then teams length is 1
+        And teams length is 1
 
     Scenario Outline: Update a team with an empty <field>
         Given username and password of the correct user
@@ -98,7 +98,7 @@ Feature: Teams
         But with an empty <field>
         And put into body
         When makes POST request /teams
-        Then gets status 409
+        Then gets status 400
         Examples:
             | field    |
             |     name |
@@ -116,7 +116,7 @@ Feature: Teams
         But with an unsopported name
         And put into body
         When makes PUT request /teams/{name}
-        Then gets status 409
+        Then gets status 400
 
     Scenario: Update a team with an the taken name
         Given username and password of the correct user
@@ -223,4 +223,4 @@ Feature: Teams
         And put into params
         When makes GET request /users/{username}/teams
         Then gets status 200
-        Then teams length is 0
+        And teams length is 0

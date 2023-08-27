@@ -93,7 +93,7 @@
         * team_name: string
     * Response body:
         * name: string
-        * owner_username: string
+        * owner_user_username: string
         * active: boolean
 
 * ### PUT "/teams/{team_name}" — update a team
@@ -126,7 +126,7 @@
     * Response body:
         * teams: array[ {
             * name: string
-            * owner_username: string
+            * owner_user_username: string
             * active: boolean
         } ]
 

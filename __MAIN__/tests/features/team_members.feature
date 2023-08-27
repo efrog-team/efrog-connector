@@ -22,7 +22,7 @@ Feature: Teams
         But with an empty <field>
         And put into body
         When makes POST request /teams/{name}/members
-        Then gets status 409
+        Then gets status 400
         Examples:
             | field           |
             | member_username |
@@ -113,7 +113,7 @@ Feature: Teams
         And put into params
         When makes GET request /teams/{name}/members
         Then gets status 200
-        Then team_members length is 2
+        And team_members length is 2
 
     Scenario: Get a member of a team that does not exist
         Given name of a non-existing team

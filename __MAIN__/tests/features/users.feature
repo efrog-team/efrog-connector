@@ -9,7 +9,7 @@ Feature: Users
         But with an empty <field>
         And put into body
         When makes POST request /users
-        Then gets status 409
+        Then gets status 400
         Examples:
             | field    |
             | username |
@@ -29,7 +29,7 @@ Feature: Users
         But with an unsopported username
         And put into body
         When makes POST request /users
-        Then gets status 409
+        Then gets status 400
 
     Scenario: Add a user
         Given all data of the correct user
@@ -123,7 +123,7 @@ Feature: Users
         But with an unsopported username
         And put into body
         When makes PUT request /users/{username}
-        Then gets status 409
+        Then gets status 400
 
     Scenario: Update a user
         Given username and password of the correct user

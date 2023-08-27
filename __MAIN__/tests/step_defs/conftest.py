@@ -49,7 +49,7 @@ def clear_database() -> None:
 
 @given(parsers.parse("with an empty {field}"))
 def empty_field(data: dict[str, str | int | bool], field: str) -> None:
-    data[field] = ''
+    data[field] = '' if type(data[field]) is str else 0
 
 @given(parsers.parse("a field {field} is renamed to {name}"))
 def rename_field(data: dict[str, str | int | bool], field: str, name: str) -> None:
@@ -181,3 +181,70 @@ def team_taken_name(name: str, names_convert: dict[str, str], data: dict[str, st
     if len(names_convert[name]) < 3:
         suffix = ''
     data['name'] = names_convert[name] + suffix
+    
+# Problems ----------------------------------------------------------
+
+@given(parsers.parse("{fields} of {name} problem"))
+def currect_problem(fields: str, name: str, names_convert: dict[str, str], data: dict[str, str | int | bool]) -> None:
+    fields_list: list[str] = []
+    if fields == "all data":
+        fields_list = ['name', 'statement', 'input_statement', 'output_statement', 'notes', 'time_restriction', 'memory_restriction', 'private']
+    else:
+        fields_list = fields.replace(" and ", ", ").split(", ")
+    if name == "the correct public":
+        if 'id' in fields_list:
+            data['id'] = 2
+        if 'name' in fields_list:
+            data['name'] = 'Hello World! Public'
+        if 'statement' in fields_list:
+            data['statement'] = 'Print Hello World!'
+        if 'input_statement' in fields_list:
+            data['input_statement'] = 'Nothing'
+        if 'output_statement' in fields_list:
+            data['output_statement'] = 'Just print Hello World!'
+        if 'notes' in fields_list:
+            data['notes'] = 'Nothing'
+        if 'time_restriction' in fields_list:
+            data['time_restriction'] = 1
+        if 'memory_restriction' in fields_list:
+            data['memory_restriction'] = 128
+        if 'private' in fields_list:
+            data['private'] = 0
+    elif name == "the correct private":
+        if 'id' in fields_list:
+            data['id'] = 3
+        if 'name' in fields_list:
+            data['name'] = 'Hello World! Private'
+        if 'statement' in fields_list:
+            data['statement'] = 'Print Hello World!'
+        if 'input_statement' in fields_list:
+            data['input_statement'] = 'Nothing'
+        if 'output_statement' in fields_list:
+            data['output_statement'] = 'Just print Hello World!'
+        if 'notes' in fields_list:
+            data['notes'] = 'Nothing'
+        if 'time_restriction' in fields_list:
+            data['time_restriction'] = 1
+        if 'memory_restriction' in fields_list:
+            data['memory_restriction'] = 128
+        if 'private' in fields_list:
+            data['private'] = 1
+    else:
+        if 'id' in fields_list:
+            data['id'] = 4
+        if 'name' in fields_list:
+            data['name'] = names_convert[name]
+        if 'statement' in fields_list:
+            data['statement'] = names_convert[name] + ' statement'
+        if 'input_statement' in fields_list:
+            data['input_statement'] = names_convert[name] + ' input statement'
+        if 'output_statement' in fields_list:
+            data['output_statement'] = names_convert[name] + ' output statement'
+        if 'notes' in fields_list:
+            data['notes'] = names_convert[name] + ' notes statement'
+        if 'time_restriction' in fields_list:
+            data['time_restriction'] = 1
+        if 'memory_restriction' in fields_list:
+            data['memory_restriction'] = 128
+        if 'private' in fields_list:
+            data['private'] = 0

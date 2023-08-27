@@ -48,15 +48,15 @@ def root() -> JSONResponse:
 @app.post("/users")
 def post_user(user: UserRequest) -> JSONResponse:
     if user.username == "":
-        raise HTTPException(status_code=409, detail="Username is empty")
+        raise HTTPException(status_code=400, detail="Username is empty")
     if len(user.username) < 3:
-        raise HTTPException(status_code=409, detail="Username is too short")
+        raise HTTPException(status_code=400, detail="Username is too short")
     if user.email == "":
-        raise HTTPException(status_code=409, detail="Email is empty")
+        raise HTTPException(status_code=400, detail="Email is empty")
     if user.name == "":
-        raise HTTPException(status_code=409, detail="Name is empty")
+        raise HTTPException(status_code=400, detail="Name is empty")
     if user.password == "":
-        raise HTTPException(status_code=409, detail="Password is empty")
+        raise HTTPException(status_code=400, detail="Password is empty")
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
         try:
@@ -141,7 +141,7 @@ def put_user(username: str, user: UserRequestUpdate, authorization: Annotated[st
                 cursor.execute("UPDATE users SET email = %(email)s WHERE username = BINARY %(username)s", {'email': user_db['email'], 'username': username})
                 cursor.execute("UPDATE users SET name = %(name)s WHERE username = BINARY %(username)s", {'name': user_db['name'], 'username': username})
                 cursor.execute("UPDATE users SET password = %(password)s WHERE username = BINARY %(username)s", {'password': user_db['password'], 'username': username})
-                raise HTTPException(status_code=409, detail="Username is too short")
+                raise HTTPException(status_code=400, detail="Username is too short")
             try:
                 cursor.execute("UPDATE users SET username = %(new_username)s WHERE username = BINARY %(username)s", {'new_username': user.username, 'username': username})
             except IntegrityError:
@@ -165,9 +165,9 @@ def detect_error_teams(cursor: MySQLCursorAbstract, team_name: str, owner_user_i
 def post_team(team: TeamRequest, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     token: Token = decode_token(authorization)
     if team.name == "":
-        raise HTTPException(status_code=409, detail="Name is empty")
+        raise HTTPException(status_code=400, detail="Name is empty")
     if len(team.name) < 3:
-        raise HTTPException(status_code=409, detail="Name is too short")
+        raise HTTPException(status_code=400, detail="Name is too short")
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
         try:
@@ -187,7 +187,7 @@ def get_team(team_name: str) -> JSONResponse:
         cursor.execute("""
             SELECT 
                 teams.name AS name,
-                users.username AS owner_username,
+                users.username AS owner_user_username,
                 teams.active AS active
             FROM teams
             INNER JOIN users ON teams.owner_user_id = users.id
@@ -203,9 +203,9 @@ def get_team(team_name: str) -> JSONResponse:
 def put_team(team_name: str, team: TeamRequestUpdate, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     token: Token = decode_token(authorization)
     if team.name == "":
-        raise HTTPException(status_code=409, detail="Name is empty")
+        raise HTTPException(status_code=400, detail="Name is empty")
     if len(team.name) < 3:
-        raise HTTPException(status_code=409, detail="Name is too short")
+        raise HTTPException(status_code=400, detail="Name is too short")
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
         try:
@@ -244,7 +244,7 @@ def get_teams(username: str, only_owned: bool = False, only_unowned: bool = Fals
         cursor.execute("""
             SELECT 
                 teams.name AS name,
-                users.username AS owner_username,
+                users.username AS owner_user_username,
                 teams.active AS active
             FROM teams
             INNER JOIN users ON teams.owner_user_id = users.id
@@ -335,7 +335,7 @@ def detect_error_team_members(cursor: MySQLCursorAbstract, team_name: str, owner
 def post_team_member(team_member: TeamMemberRequest, team_name: str, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     token: Token = decode_token(authorization)
     if team_member.member_username == "":
-        raise HTTPException(status_code=409, detail="Username is empty")
+        raise HTTPException(status_code=400, detail="Username is empty")
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
         cursor.execute("SELECT id FROM users WHERE username = BINARY %(username)s LIMIT 1", {'username': team_member.member_username})
@@ -523,19 +523,27 @@ def detect_error_problems(cursor: MySQLCursorAbstract, problem_id: int, author_u
 @app.post("/problems")
 def post_problem(problem: ProblemRequest, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     token: Token = decode_token(authorization)
+    if problem.name == "":
+        raise HTTPException(status_code=400, detail="Name is empty")
+    if problem.statement == "":
+        raise HTTPException(status_code=400, detail="Statement is empty")
+    if problem.time_restriction <= 0:
+        raise HTTPException(status_code=400, detail="Time restriction is less or equal to 0")
+    if problem.memory_restriction <= 0:
+        raise HTTPException(status_code=400, detail="Memory restriction is less or equal to 0")
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
         cursor.execute("""
             INSERT INTO problems (author_user_id, name, statement, input_statement, output_statement, notes, time_restriction, memory_restriction, private)
             VALUES (%(author_user_id)s, %(name)s, %(statement)s, %(input_statement)s, %(output_statement)s, %(notes)s, %(time_restriction)s, %(memory_restriction)s, %(private)s)
-            """, {'authro_user_id': token.id, 'name': problem.name, 'statement': problem.statement, 'input_statement': problem.input_statement, 'output_statement': problem.output_statement, 'notes': problem.notes, 'time_restriction': problem.time_restriction, 'memory_restriction': problem.memory_restriction, 'private': int(problem.private)})
+            """, {'author_user_id': token.id, 'name': problem.name, 'statement': problem.statement, 'input_statement': problem.input_statement, 'output_statement': problem.output_statement, 'notes': problem.notes, 'time_restriction': problem.time_restriction, 'memory_restriction': problem.memory_restriction, 'private': int(problem.private)})
         problem_id: int | None = cursor.lastrowid
         if problem_id is None:
             raise HTTPException(status_code=500, detail="Internal Server Error")
         return JSONResponse({'problem_id': problem_id})
         
 @app.get("/problems/{problem_id}")
-def get_problem(problem_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+def get_problem(problem_id: int, authorization: Annotated[str | None, Header()] = None) -> JSONResponse:
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
         cursor.execute("""
@@ -560,14 +568,16 @@ def get_problem(problem_id: int, authorization: Annotated[str | None, Header()])
             raise HTTPException(status_code=404, detail="Problem does not exist")
         if problem['private'] == 1:
             token: Token = decode_token(authorization)
-            if token.id != problem['author_user_id']:
+            if token.username != problem['author_user_username']:
                 raise HTTPException(status_code=403, detail="You are not the author of this private problem")
         return JSONResponse(problem)
 
-@app.get('/problems')
+@app.get("/problems")
 def get_problems(start: int = 1, limit: int = 100) -> JSONResponse:
     if start < 1:
         raise HTTPException(status_code=400, detail="Start must be greater than or equal 1")
+    if limit < 1:
+        raise HTTPException(status_code=400, detail="Limit must be greater than or equal 1")
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
         cursor.execute("""
@@ -591,17 +601,17 @@ def get_problems(start: int = 1, limit: int = 100) -> JSONResponse:
             'problems': list(cursor.fetchall())
         })
 
-@app.get('/users/{username}/problems')
-def get_problems_users(username: str, authorization: Annotated[str | None, Header()], only_public: bool = False, only_private: bool = False) -> JSONResponse:
+@app.get("/users/{username}/problems")
+def get_problems_users(username: str, authorization: Annotated[str | None, Header()] = None, only_public: bool = False, only_private: bool = False) -> JSONResponse:
     if not only_public:
         token: Token = decode_token(authorization)
         if token.username != username:
             raise HTTPException(status_code=403, detail="You are trying to access not only public problems not being owned by you")
     filter_conditions: str = ""
     if only_public:
-        filter_conditions += " AND private = 0"
+        filter_conditions += " AND problems.private = 0"
     if only_private:
-        filter_conditions += " AND private = 1"
+        filter_conditions += " AND problems.private = 1"
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
         cursor.execute("""
@@ -621,8 +631,10 @@ def get_problems_users(username: str, authorization: Annotated[str | None, Heade
             WHERE users.username = BINARY %(username)s
         """ + filter_conditions, {'username': username})
         problems: list[Any] = list(cursor.fetchall())
-        if problems is None:
-            raise HTTPException(status_code=404, detail="Problem does not exist")
+        if len(problems) == 0:
+            cursor.execute("SELECT 1 FROM users WHERE username = BINARY %(username)s LIMIT 1", {'username': username})
+            if cursor.fetchone() is None:
+                raise HTTPException(status_code=404, detail="User does not exist")
         return JSONResponse({
             'problems': problems
         })
@@ -656,12 +668,12 @@ def put_make_problem_private(problem_id: int, authorization: Annotated[str | Non
     return JSONResponse({})
 
 @app.get("/problems/{problem_id}/check-if-can-be-edited")
-def get_check_if_problem_can_be_edited(problem_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+def get_check_if_problem_can_be_edited(problem_id: int, authorization: Annotated[str | None, Header()] = None) -> JSONResponse:
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
         cursor.execute("SELECT author_user_id, private FROM problems WHERE id = %(problem_id)s LIMIT 1", {'problem_id': problem_id})
         problem: Any = cursor.fetchone()
-        if cursor.fetchone() is None:
+        if problem is None:
             raise HTTPException(status_code=404, detail="Problem does not exist")
         if problem['private']:
             token: Token = decode_token(authorization)
@@ -676,7 +688,7 @@ def get_check_if_problem_can_be_edited(problem_id: int, authorization: Annotated
 def put_problem(problem_id: int, problem: ProblemRequestUpdate, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     token: Token = decode_token(authorization)
     update_set: str = ""
-    update_dict: dict[str, Any] = {'problem_id': problem_id}
+    update_dict: dict[str, Any] = {'problem_id': problem_id, 'author_user_id': token.id}
     if problem.name is not None and problem.name != '':
         update_set += "name = %(name)s, "
         update_dict['name'] = problem.name
@@ -702,7 +714,7 @@ def put_problem(problem_id: int, problem: ProblemRequestUpdate, authorization: A
         return JSONResponse({})
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
-        cursor.execute("UPDATE problems SET " + update_set[:-2] + " WHERE id = %(problem_id)s", update_dict)
+        cursor.execute("UPDATE problems SET " + update_set[:-2] + " WHERE id = %(problem_id)s AND author_user_id = %(author_user_id)s", update_dict)
         if cursor.rowcount == 0:
             detect_error_problems(cursor, problem_id, token.id, False, False, False)
     return JSONResponse({})
@@ -740,7 +752,7 @@ def post_test_case(problem_id: int, test_case: TestCaseRequest, authorization: A
         })
 
 @app.get("/problems/{problem_id}/test-cases/{test_case_id}")
-def get_test_case(problem_id: int, test_case_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+def get_test_case(problem_id: int, test_case_id: int, authorization: Annotated[str | None, Header()] = None) -> JSONResponse:
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
         cursor.execute("""
@@ -761,7 +773,7 @@ def get_test_case(problem_id: int, test_case_id: int, authorization: Annotated[s
         return JSONResponse(test_case)
 
 @app.get("/problems/{problem_id}/test-cases")
-def get_test_cases(problem_id: int, authorization: Annotated[str | None, Header()], only_opened: bool = False, only_closed: bool = False) -> JSONResponse:
+def get_test_cases(problem_id: int, authorization: Annotated[str | None, Header()] = None, only_opened: bool = False, only_closed: bool = False) -> JSONResponse:
     filter_conditions: str = ""
     if only_opened:
         filter_conditions += " AND opened = 1"
@@ -788,7 +800,7 @@ def get_test_cases(problem_id: int, authorization: Annotated[str | None, Header(
         })
 
 @app.get("/problems/{problem_id}/with-test-cases")
-def get_problem_full(problem_id: int, authorization: Annotated[str | None, Header()], only_opened: bool = False, only_closed: bool = False) -> JSONResponse:
+def get_problem_full(problem_id: int, authorization: Annotated[str | None, Header()] = None, only_opened: bool = False, only_closed: bool = False) -> JSONResponse:
     filter_conditions: str = ""
     if only_opened:
         filter_conditions += " AND opened = 1"
