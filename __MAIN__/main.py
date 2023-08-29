@@ -213,7 +213,7 @@ def put_team(team_name: str, team: TeamRequestUpdate, authorization: Annotated[s
         except IntegrityError:
             raise HTTPException(status_code=409, detail="This name is already taken")
         if cursor.rowcount == 0:
-            detect_error_teams(cursor, team_name, token.id, False, False)
+            detect_error_teams(cursor, team_name, token.id, False, True)
     return JSONResponse({})
 
 @app.get("/users/{username}/teams")
@@ -266,7 +266,7 @@ def put_activate_team(team_name: str, authorization: Annotated[str | None, Heade
     with ConnectionCursor(database_config) as cursor:
         cursor.execute("UPDATE teams SET active = 1 WHERE name = BINARY %(name)s AND owner_user_id = %(owner_user_id)s AND individual = 0", {'name': team_name, 'owner_user_id': token.id})
         if cursor.rowcount == 0:
-            detect_error_teams(cursor, team_name, token.id, False, False)
+            detect_error_teams(cursor, team_name, token.id, False, True)
     return JSONResponse({})
 
 @app.put("/teams/{team_name}/deactivate")
@@ -276,7 +276,7 @@ def put_deactivate_team(team_name: str, authorization: Annotated[str | None, Hea
     with ConnectionCursor(database_config) as cursor:
         cursor.execute("UPDATE teams SET active = 0 WHERE name = BINARY %(name)s AND owner_user_id = %(owner_user_id)s AND individual = 0", {'name': team_name, 'owner_user_id': token.id})
         if cursor.rowcount == 0:
-            detect_error_teams(cursor, team_name, token.id, False, False)
+            detect_error_teams(cursor, team_name, token.id, False, True)
     return JSONResponse({})
 
 def check_if_team_can_be_deleted(cursor: MySQLCursorAbstract, team_name: str) -> bool:
@@ -440,7 +440,7 @@ def put_make_team_member_coach(team_name: str, member_username: str, authorizati
             WHERE teams.name = BINARY %(team_name)s AND teams.individual = 0 AND teams.owner_user_id = %(owner_user_id)s AND users.username = %(member_username)s
         """, {'team_name': team_name, 'owner_user_id': token.id, 'member_username': member_username})
         if cursor.rowcount == 0:
-            detect_error_team_members(cursor, team_name, token.id, member_username, False, False)
+            detect_error_team_members(cursor, team_name, token.id, member_username, False, True)
     return JSONResponse({})
 
 @app.put("/teams/{team_name}/members/{member_username}/make-contestant")
@@ -456,7 +456,7 @@ def put_make_team_member_contestant(team_name: str, member_username: str, author
             WHERE teams.name = BINARY %(team_name)s AND teams.individual = 0 AND teams.owner_user_id = %(owner_user_id)s AND users.username = BINARY %(member_username)s
         """, {'team_name': team_name, 'owner_user_id': token.id, 'member_username': member_username})
         if cursor.rowcount == 0:
-            detect_error_team_members(cursor, team_name, token.id, member_username, False, False)
+            detect_error_team_members(cursor, team_name, token.id, member_username, False, True)
     return JSONResponse({})
 
 @app.put("/teams/{team_name}/members/{member_username}/confirm")
@@ -476,7 +476,7 @@ def put_confirm_team_member(team_name: str, member_username: str, authorization:
             WHERE teams.name = BINARY %(team_name)s AND teams.individual = 0 AND users.username = BINARY %(member_username)s
         """, {'team_name': team_name, 'member_username': member_username})
         if cursor.rowcount == 0:
-            detect_error_team_members(cursor, team_name, -1, member_username, True, False)
+            detect_error_team_members(cursor, team_name, -1, member_username, True, True)
     return JSONResponse({})
 
 @app.put("/teams/{team_name}/members/{member_username}/decline")
@@ -496,7 +496,7 @@ def put_decline_team_member(team_name: str, member_username: str, authorization:
             WHERE teams.name = BINARY %(team_name)s AND teams.individual = 0 AND users.username = BINARY %(member_username)s
         """, {'team_name': team_name, 'member_username': member_username})
         if cursor.rowcount == 0:
-            detect_error_team_members(cursor, team_name, -1, member_username, True, False)
+            detect_error_team_members(cursor, team_name, -1, member_username, True, True)
     return JSONResponse({})
 
 @app.delete("/teams/{team_name}/members/{member_username}")
@@ -655,7 +655,7 @@ def put_make_problem_public(problem_id: int, authorization: Annotated[str | None
             WHERE id = %(problem_id)s AND author_user_id = %(author_user_id)s
         """, {'problem_id': problem_id, 'author_user_id': token.id})
         if cursor.rowcount == 0:
-            detect_error_problems(cursor, problem_id, token.id, False, False, False)
+            detect_error_problems(cursor, problem_id, token.id, False, False, True)
     return JSONResponse({})
 
 @app.put("/problems/{problem_id}/make-private")
@@ -669,7 +669,7 @@ def put_make_problem_private(problem_id: int, authorization: Annotated[str | Non
             WHERE id = %(problem_id)s AND author_user_id = %(author_user_id)s
         """, {'problem_id': problem_id, 'author_user_id': token.id})
         if cursor.rowcount == 0:
-            detect_error_problems(cursor, problem_id, token.id, False, False, False)
+            detect_error_problems(cursor, problem_id, token.id, False, False, True)
     return JSONResponse({})
 
 def check_if_problem_can_be_edited(cursor: MySQLCursorAbstract, problem_id: int, authorization: str | None) -> bool:
@@ -726,7 +726,7 @@ def put_problem(problem_id: int, problem: ProblemRequestUpdate, authorization: A
             raise HTTPException(status_code=403, detail="This problem cannot be edited or deleted")
         cursor.execute("UPDATE problems SET " + update_set[:-2] + " WHERE id = %(problem_id)s AND author_user_id = %(author_user_id)s", update_dict)
         if cursor.rowcount == 0:
-            detect_error_problems(cursor, problem_id, token.id, False, False, False)
+            detect_error_problems(cursor, problem_id, token.id, False, False, True)
     return JSONResponse({})
 
 @app.delete("/problems/{problem_id}")
@@ -870,7 +870,7 @@ def put_make_test_case_opened(problem_id: int, test_case_id: int, authorization:
             WHERE test_cases.id = %(test_case_id)s AND test_cases.problem_id = %(problem_id)s AND users.id = %(author_user_id)s
         """, {'test_case_id': test_case_id, 'problem_id': problem_id, 'author_user_id': token.id})
         if cursor.rowcount == 0:
-            detect_error_problems(cursor, problem_id, token.id, False, False, False)
+            detect_error_problems(cursor, problem_id, token.id, False, False, True)
     return JSONResponse({})
 
 @app.put("/problems/{problem_id}/test-cases/{test_case_id}/make-closed")
@@ -888,7 +888,7 @@ def put_make_test_case_closed(problem_id: int, test_case_id: int, authorization:
             WHERE test_cases.id = %(test_case_id)s AND test_cases.problem_id = %(problem_id)s AND users.id = %(author_user_id)s
         """, {'test_case_id': test_case_id, 'problem_id': problem_id, 'author_user_id': token.id})
         if cursor.rowcount == 0:
-            detect_error_problems(cursor, problem_id, token.id, False, False, False)
+            detect_error_problems(cursor, problem_id, token.id, False, False, True)
     return JSONResponse({})
 
 @app.put("/problems/{problem_id}/test-cases/{test_case_id}")
@@ -917,7 +917,7 @@ def put_test_case(problem_id: int, test_case_id: int, test_case: TestCaseRequest
             WHERE test_cases.id = %(test_case_id)s AND test_cases.problem_id = %(problem_id)s AND users.id = %(author_user_id)s
         """, update_dict)
         if cursor.rowcount == 0:
-            detect_error_problems(cursor, problem_id, token.id, False, False, False)
+            detect_error_problems(cursor, problem_id, token.id, False, False, True)
     return JSONResponse({})
 
 @app.delete("/problems/{problem_id}/test-cases/{test_case_id}")
