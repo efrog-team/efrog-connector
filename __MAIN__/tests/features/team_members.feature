@@ -1,4 +1,4 @@
-Feature: Teams
+Feature: Team members
 
     Scenario: Init
         Then clear the database

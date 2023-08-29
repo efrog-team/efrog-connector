@@ -279,18 +279,21 @@ def put_deactivate_team(team_name: str, authorization: Annotated[str | None, Hea
             detect_error_teams(cursor, team_name, token.id, False, False)
     return JSONResponse({})
 
+def check_if_team_can_be_deleted(cursor: MySQLCursorAbstract, team_name: str) -> bool:
+    cursor.execute("""
+        SELECT 1
+        FROM competition_participants
+        INNER JOIN teams ON competition_participants.team_id = teams.id
+        WHERE teams.name = BINARY %(team_name)s AND teams.individual = 0
+    """, {'team_name': team_name})
+    return len(cursor.fetchall()) == 0
+
 @app.get("/teams/{team_name}/check-if-can-be-deleted")
 def get_check_if_team_can_be_deleted(team_name: str) -> JSONResponse:
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
-        cursor.execute("""
-            SELECT 1
-            FROM competition_participants
-            INNER JOIN teams ON competition_participants.team_id = teams.id
-            WHERE teams.name = BINARY %(team_name)s AND teams.individual = 0
-        """, {'team_name': team_name})
         return JSONResponse({
-            'can': len(cursor.fetchall()) == 0
+            'can': check_if_team_can_be_deleted(cursor, team_name)
         })
 
 @app.delete("/teams/{team_name}")
@@ -298,6 +301,8 @@ def delete_team(team_name: str, authorization: Annotated[str | None, Header()]) 
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
+        if not check_if_team_can_be_deleted(cursor, team_name):
+            raise HTTPException(status_code=403, detail="This team cannot be deleted")
         cursor.execute("""
             DELETE team_members
             FROM team_members
@@ -667,21 +672,24 @@ def put_make_problem_private(problem_id: int, authorization: Annotated[str | Non
             detect_error_problems(cursor, problem_id, token.id, False, False, False)
     return JSONResponse({})
 
+def check_if_problem_can_be_edited(cursor: MySQLCursorAbstract, problem_id: int, authorization: str | None) -> bool:
+    cursor.execute("SELECT author_user_id, private FROM problems WHERE id = %(problem_id)s LIMIT 1", {'problem_id': problem_id})
+    problem: Any = cursor.fetchone()
+    if problem is None:
+        raise HTTPException(status_code=404, detail="Problem does not exist")
+    if problem['private']:
+        token: Token = decode_token(authorization)
+        if token.id != problem['author_user_id']:
+            raise HTTPException(status_code=403, detail="You are not the owner of the problem")
+    cursor.execute("SELECT 1 FROM submissions WHERE problem_id = %(problem_id)s LIMIT 1", {'problem_id': problem_id})
+    return len(cursor.fetchall()) == 0
+
 @app.get("/problems/{problem_id}/check-if-can-be-edited")
 def get_check_if_problem_can_be_edited(problem_id: int, authorization: Annotated[str | None, Header()] = None) -> JSONResponse:
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
-        cursor.execute("SELECT author_user_id, private FROM problems WHERE id = %(problem_id)s LIMIT 1", {'problem_id': problem_id})
-        problem: Any = cursor.fetchone()
-        if problem is None:
-            raise HTTPException(status_code=404, detail="Problem does not exist")
-        if problem['private']:
-            token: Token = decode_token(authorization)
-            if token.id != problem['author_user_id']:
-                raise HTTPException(status_code=403, detail="You are not the owner of the problem")
-        cursor.execute("SELECT 1 FROM submissions WHERE problem_id = %(problem_id)s LIMIT 1", {'problem_id': problem_id})
         return JSONResponse({
-            'can': len(cursor.fetchall()) == 0
+            'can': check_if_problem_can_be_edited(cursor, problem_id, authorization)
         })
 
 @app.put("/problems/{problem_id}")
@@ -714,6 +722,8 @@ def put_problem(problem_id: int, problem: ProblemRequestUpdate, authorization: A
         return JSONResponse({})
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
+        if not check_if_problem_can_be_edited(cursor, problem_id, authorization):
+            raise HTTPException(status_code=403, detail="This problem cannot be edited or deleted")
         cursor.execute("UPDATE problems SET " + update_set[:-2] + " WHERE id = %(problem_id)s AND author_user_id = %(author_user_id)s", update_dict)
         if cursor.rowcount == 0:
             detect_error_problems(cursor, problem_id, token.id, False, False, False)
@@ -724,6 +734,8 @@ def delete_problem(problem_id: int, authorization: Annotated[str | None, Header(
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
+        if not check_if_problem_can_be_edited(cursor, problem_id, authorization):
+            raise HTTPException(status_code=403, detail="This problem cannot be edited or deleted")
         cursor.execute("""
             DELETE problems
             FROM problems
@@ -736,9 +748,13 @@ def delete_problem(problem_id: int, authorization: Annotated[str | None, Header(
 
 @app.post("/problems/{problem_id}/test-cases")
 def post_test_case(problem_id: int, test_case: TestCaseRequest, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+    if test_case.score < 0:
+        raise HTTPException(status_code=400, detail="Score must be greater than or equal 0")
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
+        if not check_if_problem_can_be_edited(cursor, problem_id, authorization):
+            raise HTTPException(status_code=403, detail="This problem cannot be edited or deleted")
         detect_error_problems(cursor, problem_id, token.id, False, False, True)
         cursor.execute("""
             INSERT INTO test_cases (problem_id, input, solution, score, opened)
@@ -765,7 +781,7 @@ def get_test_case(problem_id: int, test_case_id: int, authorization: Annotated[s
         if test_case is None:
             detect_error_problems(cursor, problem_id, -1, True, True, True)
             raise HTTPException(status_code=404, detail="Test case does not exist")
-        if test_case['closed']:
+        if not test_case['opened']:
             token: Token = decode_token(authorization)
             detect_error_problems(cursor, problem_id, token.id, False, False, True)
         else:
@@ -844,12 +860,14 @@ def put_make_test_case_opened(problem_id: int, test_case_id: int, authorization:
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
+        if not check_if_problem_can_be_edited(cursor, problem_id, authorization):
+            raise HTTPException(status_code=403, detail="This problem cannot be edited or deleted")
         cursor.execute("""
             UPDATE test_cases
             INNER JOIN problems ON test_cases.problem_id = problems.id
             INNER JOIN users ON problems.author_user_id = users.id
-            SET opened = 1
-            WHERE test_cases.id = %(test_case_id)s AND problem_id = %(problem_id)s AND users.id = %(author_user_id)s
+            SET test_cases.opened = 1
+            WHERE test_cases.id = %(test_case_id)s AND test_cases.problem_id = %(problem_id)s AND users.id = %(author_user_id)s
         """, {'test_case_id': test_case_id, 'problem_id': problem_id, 'author_user_id': token.id})
         if cursor.rowcount == 0:
             detect_error_problems(cursor, problem_id, token.id, False, False, False)
@@ -860,12 +878,14 @@ def put_make_test_case_closed(problem_id: int, test_case_id: int, authorization:
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
+        if not check_if_problem_can_be_edited(cursor, problem_id, authorization):
+            raise HTTPException(status_code=403, detail="This problem cannot be edited or deleted")
         cursor.execute("""
             UPDATE test_cases
             INNER JOIN problems ON test_cases.problem_id = problems.id
             INNER JOIN users ON problems.author_user_id = users.id
-            SET opened = 0
-            WHERE test_cases.id = %(test_case_id)s AND problem_id = %(problem_id)s AND users.id = %(author_user_id)s
+            SET test_cases.opened = 0
+            WHERE test_cases.id = %(test_case_id)s AND test_cases.problem_id = %(problem_id)s AND users.id = %(author_user_id)s
         """, {'test_case_id': test_case_id, 'problem_id': problem_id, 'author_user_id': token.id})
         if cursor.rowcount == 0:
             detect_error_problems(cursor, problem_id, token.id, False, False, False)
@@ -887,12 +907,14 @@ def put_test_case(problem_id: int, test_case_id: int, test_case: TestCaseRequest
         update_dict['score'] = test_case.score
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
-        cursor.execute("""
+        if not check_if_problem_can_be_edited(cursor, problem_id, authorization):
+            raise HTTPException(status_code=403, detail="This problem cannot be edited or deleted")
+        cursor.execute(f"""
             UPDATE test_cases
             INNER JOIN problems ON test_cases.problem_id = problems.id
             INNER JOIN users ON problems.author_user_id = users.id
-            """ + update_set[:-2] + """
-            WHERE test_cases.id = %(test_case_id)s AND problem_id = %(problem_id)s AND users.id = %(author_user_id)s
+            SET """ + update_set[:-2] + ' ' + """
+            WHERE test_cases.id = %(test_case_id)s AND test_cases.problem_id = %(problem_id)s AND users.id = %(author_user_id)s
         """, update_dict)
         if cursor.rowcount == 0:
             detect_error_problems(cursor, problem_id, token.id, False, False, False)
@@ -903,6 +925,8 @@ def delete_test_case(problem_id: int, test_case_id: int, authorization: Annotate
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
+        if not check_if_problem_can_be_edited(cursor, problem_id, authorization):
+            raise HTTPException(status_code=403, detail="This problem cannot be edited or deleted")
         cursor.execute("""
             DELETE test_cases
             FROM test_cases
@@ -914,7 +938,7 @@ def delete_test_case(problem_id: int, test_case_id: int, authorization: Annotate
             detect_error_problems(cursor, problem_id, token.id, False, False, False)
     return JSONResponse({})
 
-def check_problem(submission_id: int, problem_id: int, code: str, language: str, no_realtime: bool) -> None:
+def check_submission(submission_id: int, problem_id: int, code: str, language: str, no_realtime: bool) -> None:
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
         create_files_result: CreateFilesResult = lib.create_files(submission_id, code, language)
@@ -1004,6 +1028,12 @@ def check_problem(submission_id: int, problem_id: int, code: str, language: str,
 
 @app.post("/submissions")
 def submit(submission: SubmissionRequest, authorization: Annotated[str | None, Header()], no_realtime:  bool = False) -> JSONResponse:
+    if submission.code == "":
+        raise HTTPException(status_code=400, detail="Code cannot be empty")
+    if submission.language_name == "":
+        raise HTTPException(status_code=400, detail="Language name cannot be empty")
+    if submission.language_version == "":
+        raise HTTPException(status_code=400, detail="Language version cannot be empty")
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
@@ -1021,12 +1051,12 @@ def submit(submission: SubmissionRequest, authorization: Annotated[str | None, H
             raise HTTPException(status_code=500, detail="Internal server error")
         if not no_realtime:
             current_websockets[submission_id] = CurrentWebsocket(None, None, [])
-            checking_queue.submit(check_problem, submission_id, submission.problem_id, submission.code, f"{submission.language_name} ({submission.language_version})", no_realtime)
+            checking_queue.submit(check_submission, submission_id, submission.problem_id, submission.code, f"{submission.language_name} ({submission.language_version})", no_realtime)
             return JSONResponse({
                 'submission_id': submission_id
             })
         else:
-            checking_queue.submit(check_problem, submission_id, submission.problem_id, submission.code, f"{submission.language_name} ({submission.language_version})", no_realtime).result()
+            checking_queue.submit(check_submission, submission_id, submission.problem_id, submission.code, f"{submission.language_name} ({submission.language_version})", no_realtime).result()
             cursor.execute("""
                 SELECT
                     submissions.id AS id,
@@ -1082,7 +1112,7 @@ def get_submission(submission_id: int, authorization: Annotated[str | None, Head
             cursor.execute("SELECT checked FROM submissions WHERE id = %(submission_id)s LIMIT 1", {'submission_id': submission_id})
             if cursor.fetchone() is None:
                 raise HTTPException(status_code=404, detail="Submission does not exist")
-            raise HTTPException(status_code=404, detail="You are not the author of this submission")
+            raise HTTPException(status_code=403, detail="You are not the author of this submission")
         if submission_first['checked']:
             cursor.execute("""
                 SELECT

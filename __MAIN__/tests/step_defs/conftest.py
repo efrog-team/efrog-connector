@@ -185,7 +185,7 @@ def team_taken_name(name: str, names_convert: dict[str, str], data: dict[str, st
 # Problems ----------------------------------------------------------
 
 @given(parsers.parse("{fields} of {name} problem"))
-def currect_problem(fields: str, name: str, names_convert: dict[str, str], data: dict[str, str | int | bool]) -> None:
+def problem(fields: str, name: str, names_convert: dict[str, str], data: dict[str, str | int | bool]) -> None:
     fields_list: list[str] = []
     if fields == "all data":
         fields_list = ['name', 'statement', 'input_statement', 'output_statement', 'notes', 'time_restriction', 'memory_restriction', 'private']
@@ -248,3 +248,133 @@ def currect_problem(fields: str, name: str, names_convert: dict[str, str], data:
             data['memory_restriction'] = 128
         if 'private' in fields_list:
             data['private'] = 0
+
+@then(parsers.parse("add {name} problem to the database"))
+def problem_in_database(name: str, names_convert: dict[str, str]) -> None:
+    if name == "the correct public" and client.get('/problems/2').status_code == 404:
+        client.post('/problems', json={
+            'name': 'Hello World! Public',
+            'statement': 'Print Hello World!',
+            'input_statement': 'Nothing',
+            'output_statement': 'Just print Hello World!',
+            'notes': 'Nothing',
+            'time_restriction': 1,
+            'memory_restriction': 128,
+            'private': 0
+        }, headers={
+            'Authorization': client.post('/token', json={
+                'username': "correct",
+                'password': "correct"
+            }).json()['token']
+        })
+    elif name == "the correct private" and client.get('/problems/3', headers={
+            'Authorization': client.post('/token', json={
+                'username': "correct",
+                'password': "correct"
+            }).json()['token']
+        }).status_code == 404:
+        client.post('/problems', json={
+            'name': 'Hello World! Private',
+            'statement': 'Print Hello World!',
+            'input_statement': 'Nothing',
+            'output_statement': 'Just print Hello World!',
+            'notes': 'Nothing',
+            'time_restriction': 1,
+            'memory_restriction': 128,
+            'private': 1
+        }, headers={
+            'Authorization': client.post('/token', json={
+                'username': "correct",
+                'password': "correct"
+            }).json()['token']
+        })
+    elif client.get('/problems/4').status_code == 404:
+        client.post('/problems', json={
+            'name': names_convert[name],
+            'statement': names_convert[name] + ' statement',
+            'input_statement': names_convert[name] + ' input statement',
+            'output_statement': names_convert[name] + ' output statement',
+            'notes': names_convert[name] + ' notes statement',
+            'time_restriction': 1,
+            'memory_restriction': 128,
+            'private': 0
+        }, headers={
+            'Authorization': client.post('/token', json={
+                'username': "correct",
+                'password': "correct"
+            }).json()['token']
+        })
+
+# Test cases --------------------------------------------------------
+
+@given(parsers.parse("{fields} of {name} test case"))
+def test_case(fields: str, name: str, names_convert: dict[str, str], data: dict[str, str | int | bool]) -> None:
+    fields_list: list[str] = []
+    if fields == "all data":
+        fields_list = ['id', 'input', 'solution', 'score', 'private']
+    else:
+        fields_list = fields.replace(" and ", ", ").split(", ")
+    if name == "the correct opened":
+        if 'id' in fields_list:
+            data['id'] = 7
+        if 'input' in fields_list:
+            data['input'] = ''
+        if 'solution' in fields_list:
+            data['solution'] = 'Hello World!'
+        if 'score' in fields_list:
+            data['score'] = 0
+        if 'private' in fields_list:
+            data['opened'] = 1
+    elif name == "the correct closed":
+        if 'id' in fields_list:
+            data['id'] = 8
+        if 'input' in fields_list:
+            data['input'] = ''
+        if 'solution' in fields_list:
+            data['solution'] = 'Hello World!'
+        if 'score' in fields_list:
+            data['score'] = 10
+        if 'private' in fields_list:
+            data['opened'] = 0
+    else:
+        if 'id' in fields_list:
+            data['id'] = 9
+        if 'input' in fields_list:
+            data['input'] = names_convert[name]
+        if 'solution' in fields_list:
+            data['solution'] = names_convert[name]
+        if 'score' in fields_list:
+            data['score'] = 0
+        if 'private' in fields_list:
+            data['opened'] = 0
+
+# Submissions -------------------------------------------------------
+@given(parsers.parse("{fields} of {name} submission"))
+def submission(fields: str, name: str, names_convert: dict[str, str], data: dict[str, str | int | bool]) -> None:
+    fields_list: list[str] = []
+    if fields == "all data":
+        fields_list = ['id', 'problem_id', 'code', 'language_name', 'language_version']
+    else:
+        fields_list = fields.replace(" and ", ", ").split(", ")
+    if name == "the correct":
+        if 'id' in fields_list:
+            data['id'] = 1
+        if 'problem_id' in fields_list:
+            data['problem_id'] = 2
+        if 'code' in fields_list:
+            data['code'] = 'print("Hello World!")'
+        if 'language_name' in fields_list:
+            data['language_name'] = 'Python 3'
+        if 'language_version' in fields_list:
+            data['language_version'] = '3.10'
+    else:
+        if 'id' in fields_list:
+            data['id'] = 2
+        if 'problem_id' in fields_list:
+            data['problem_id'] = 2
+        if 'code' in fields_list:
+            data['code'] = names_convert[name]
+        if 'language_name' in fields_list:
+            data['language_name'] = 'Python 3'
+        if 'language_version' in fields_list:
+            data['language_version'] = '3.10'
