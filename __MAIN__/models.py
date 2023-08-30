@@ -16,6 +16,9 @@ class UserToken(BaseModel):
     username: str
     password: str # unhashed
 
+class UserVerifyEmail(BaseModel):
+    token: str
+
 class UserResetPassword(BaseModel):
     token: str
     password: str # unhashed

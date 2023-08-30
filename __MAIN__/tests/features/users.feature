@@ -8,7 +8,7 @@ Feature: Users
         Given all data of the correct user
         But with an empty <field>
         And put into body
-        When makes POST request /users
+        When makes POST request /users?do_not_send_verification_token=true
         Then gets status 400
         Examples:
             | field    |
@@ -21,20 +21,33 @@ Feature: Users
         Given all data of the correct user
         But with the taken username
         And put into body
-        When makes POST request /users
+        When makes POST request /users?do_not_send_verification_token=true
         Then gets status 409
 
     Scenario: Add a user with an unsopported username
         Given all data of the correct user
         But with an unsopported username
         And put into body
-        When makes POST request /users
+        When makes POST request /users?do_not_send_verification_token=true
         Then gets status 400
 
     Scenario: Add a user
         Given all data of the correct user
         And put into body
-        When makes POST request /users
+        When makes POST request /users?do_not_send_verification_token=true
+        Then gets status 200
+
+    Scenario: Get a token being unverified
+        Given username and password of the correct user
+        But with wrong password
+        And put into body
+        When makes POST request /token
+        Then gets status 401
+
+    Scenario: Verrify email
+        Given email verification token for the correct user
+        And put into body
+        When makes POST request /users/email/verify
         Then gets status 200
 
     Scenario: Get a token with wrong password

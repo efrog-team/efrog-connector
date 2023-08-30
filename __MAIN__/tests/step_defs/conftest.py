@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from httpx import Response
 from main import app
 from database_scripts.clear import clear
+from security.jwt import encode_token
 
 client: TestClient = TestClient(app)
 
@@ -127,14 +128,21 @@ def user(fields: str, name: str, names_convert: dict[str, str], data: dict[str, 
     if 'password' in fields_list:
         data['password'] = names_convert[name]
 
+@given(parsers.parse("email verification token for {name} user"))
+def email_verification_token(name: str, names_convert: dict[str, str], data: dict[str, str | int | bool]) -> None:
+    data['token'] = encode_token(4, names_convert[name], 'email_verification')
+
 @then(parsers.parse("add {name} user to the database"))
 def user_in_database(name: str, names_convert: dict[str, str]) -> None:
     if client.get('/users/' + names_convert[name]).status_code == 404:
-        client.post('/users', json={
+        client.post('/users?do_not_send_verification_token=true', json={
             'username': names_convert[name],
             'email': names_convert[name] + '@test',
             'name': names_convert[name],
             'password': names_convert[name]
+        })
+        client.post('/users/email/verify', json={
+            'token': encode_token(2 if names_convert[name] == 'correct' else 3 if names_convert[name] == 'another' else 4, names_convert[name], 'email_verification')
         })
 
 @given(parsers.parse("with {name} username"))

@@ -25,6 +25,15 @@
     * Response body:
         * empty
 
+* ### POST "/users/email/verify" — verify email
+    * Request headers:
+        * empty
+    * Request body:
+        * toeken: string
+    * Request parameters:
+        * empty
+    * Response body:
+        * empty
 
 * ### POST "/token" — create an access token
     * Request headers:
@@ -74,7 +83,7 @@
     * Response body:
         * empty
 
-* ### GET "/users/email/{email}/request-password-reset-token" — request a password reset token to be sent by email
+* ### GET "/users/password/reset/token/email/{email}" — request a password reset token to be sent by email
     * Request headers:
         * empty
     * Request body:
@@ -84,7 +93,7 @@
     * Response body:
         * empty
 
-* ### GET "/users/reset-password" — reset a password
+* ### POST "/users/password/reset" — reset a password
     * Request headers:
         * empty
     * Request body:

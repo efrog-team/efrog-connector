@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Header, WebSocket
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from models import UserRequest, UserToken, UserRequestUpdate, UserResetPassword, TeamRequest, TeamRequestUpdate, TeamMemberRequest, ProblemRequest, ProblemRequestUpdate, TestCaseRequest, TestCaseRequestUpdate, SubmissionRequest, DebugRequest, DebugRequestMany
+from models import UserRequest, UserToken, UserRequestUpdate, UserVerifyEmail, UserResetPassword, TeamRequest, TeamRequestUpdate, TeamMemberRequest, ProblemRequest, ProblemRequestUpdate, TestCaseRequest, TestCaseRequestUpdate, SubmissionRequest, DebugRequest, DebugRequestMany
 from mysql.connector.abstracts import MySQLCursorAbstract
 from mysql.connector.errors import IntegrityError
 from config import email_config, database_config
@@ -48,7 +48,7 @@ def root() -> JSONResponse:
     })
 
 @app.post("/users")
-def post_user(user: UserRequest) -> JSONResponse:
+def post_user(user: UserRequest, do_not_send_verification_token: bool = False) -> JSONResponse:
     if user.username == "":
         raise HTTPException(status_code=400, detail="Username is empty")
     if len(user.username) < 3:
@@ -62,27 +62,48 @@ def post_user(user: UserRequest) -> JSONResponse:
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
         try:
-            cursor.execute("INSERT INTO users (username, email, name, password) VALUES (%(username)s, %(email)s, %(name)s, %(password)s)", {'username': user.username, 'email': user.email, 'name': user.name, 'password': hash_hex(user.password)})
+            cursor.execute("INSERT INTO users (username, email, name, password, verified) VALUES (%(username)s, %(email)s, %(name)s, %(password)s, 0)", {'username': user.username, 'email': user.email, 'name': user.name, 'password': hash_hex(user.password)})
         except IntegrityError:
             raise HTTPException(status_code=409, detail="These username or email are already taken")
         user_id: int | None = cursor.lastrowid
         if user_id is None:
             raise HTTPException(status_code=500, detail="Internal Server Error")
-        cursor.execute("INSERT INTO teams (name, owner_user_id, active, individual) VALUES (%(name)s, %(owner_user_id)s, 1, 1)", {'name': user.username, 'owner_user_id': user_id})
+        if not do_not_send_verification_token:
+            token: str = encode_token(user_id, user.username, 'email_verification')
+            msg = MIMEText(f"Your email verification token is:\n\n{token}\n\nВаш токен для верифікації пошти:\n\n{token}\n\n")
+            msg['Subject'] = "Email verification"
+            msg['From'] = email_config['EMAIL']
+            msg['To'] = user.email
+            with SMTP_SSL('smtp.gmail.com', 465) as smtp_server:
+                smtp_server.login(email_config['EMAIL'], email_config['EMAIL_PASSWORD'])
+                smtp_server.sendmail(email_config['EMAIL'], user.email, msg.as_string())
+    return JSONResponse({})
+
+@app.post("/users/email/verify")
+def post_email_verify(data: UserVerifyEmail) -> JSONResponse:
+    token: Token = decode_token(data.token, 'email_verification')
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("UPDATE users SET verified = 1 WHERE id = %(id)s", {'id': token.id})
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=500, detail="Internal Server Error")
+        cursor.execute("INSERT INTO teams (name, owner_user_id, active, individual) VALUES (%(name)s, %(owner_user_id)s, 1, 1)", {'name': token.username, 'owner_user_id': token.id})
         team_id: int | None = cursor.lastrowid
         if team_id is None:
             raise HTTPException(status_code=500, detail="Internal Server Error")
-        cursor.execute("INSERT INTO team_members (member_user_id, team_id, coach, confirmed, declined) VALUES (%(member_user_id)s, %(team_id)s, 0, 1, 0)", {'member_user_id': user_id, 'team_id': team_id})
+        cursor.execute("INSERT INTO team_members (member_user_id, team_id, coach, confirmed, declined) VALUES (%(member_user_id)s, %(team_id)s, 0, 1, 0)", {'member_user_id': token.id, 'team_id': team_id})
     return JSONResponse({})
 
 @app.post("/token")
 def post_token(user: UserToken) -> JSONResponse:
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
-        cursor.execute("SELECT id, username, password FROM users WHERE username = BINARY %(username)s LIMIT 1", {'username': user.username})
+        cursor.execute("SELECT id, username, password, verified FROM users WHERE username = BINARY %(username)s LIMIT 1", {'username': user.username})
         user_db: Any = cursor.fetchone()
         if user_db is None:
             raise HTTPException(status_code=401, detail="User does not exist")
+        if not user_db['verified']:
+            raise HTTPException(status_code=401, detail="User's email is not verified")
         if user_db['password'] != hash_hex(user.password):
             raise HTTPException(status_code=401, detail="Incorrect password")
         return JSONResponse({'token': encode_token(user_db['id'], user_db['username'])})
@@ -102,7 +123,7 @@ def get_user_me(authorization: Annotated[str | None, Header()]) -> JSONResponse:
 def get_user(username: str) -> JSONResponse:  
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
-        cursor.execute("SELECT username, email, name FROM users WHERE username = BINARY %(username)s LIMIT 1", {'username': username})
+        cursor.execute("SELECT username, email, name FROM users WHERE username = BINARY %(username)s AND verified = 1 LIMIT 1", {'username': username})
         user: Any = cursor.fetchone()
         if user is None:
             raise HTTPException(status_code=404, detail="User from the token does not exist")
@@ -112,7 +133,7 @@ def get_user(username: str) -> JSONResponse:
 def get_user_id(username: str) -> JSONResponse:  
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
-        cursor.execute("SELECT id FROM users WHERE username = BINARY %(username)s LIMIT 1", {'username': username})
+        cursor.execute("SELECT id FROM users WHERE username = BINARY %(username)s AND verified = 1 LIMIT 1", {'username': username})
         user: Any = cursor.fetchone()
         if user is None:
             raise HTTPException(status_code=404, detail="User from the token does not exist")
@@ -153,15 +174,15 @@ def put_user(username: str, user: UserRequestUpdate, authorization: Annotated[st
                 raise HTTPException(status_code=409, detail="This username is already taken")
     return JSONResponse({})
 
-@app.get("/users/email/{email}/password-reset-token")
+@app.get("/users/password/reset/token/email/{email}")
 def get_password_reset_token(email: str) -> JSONResponse:
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
-        cursor.execute("SELECT id, username FROM users WHERE email = BINARY %(email)s LIMIT 1", {'email': email})
+        cursor.execute("SELECT id, username FROM users WHERE email = BINARY %(email)s AND verified = 1 LIMIT 1", {'email': email})
         user: Any = cursor.fetchone()
         if user is None:
             raise HTTPException(status_code=404, detail="User does not exist")
-        token: str = encode_token(user['id'], user['username'], True)
+        token: str = encode_token(user['id'], user['username'], 'password_reset')
         msg = MIMEText(f"Your password reset token is:\n\n{token}\n\nВаш токен для скидання паролю:\n\n{token}\n\n")
         msg['Subject'] = "Password reset"
         msg['From'] = email_config['EMAIL']
@@ -169,11 +190,11 @@ def get_password_reset_token(email: str) -> JSONResponse:
         with SMTP_SSL('smtp.gmail.com', 465) as smtp_server:
             smtp_server.login(email_config['EMAIL'], email_config['EMAIL_PASSWORD'])
             smtp_server.sendmail(email_config['EMAIL'], email, msg.as_string())
-        return JSONResponse({})
+    return JSONResponse({})
 
-@app.post("/users/reset-password")
+@app.post("/users/password/reset")
 def reset_password(data: UserResetPassword) -> JSONResponse:
-    token: Token = decode_token(data.token, True)
+    token: Token = decode_token(data.token, 'password_reset')
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
         cursor.execute("UPDATE users SET password = %(password)s WHERE id = %(id)s", {'password': hash_hex(data.password), 'id': token.id})
@@ -248,9 +269,9 @@ def put_team(team_name: str, team: TeamRequestUpdate, authorization: Annotated[s
 def get_teams(username: str, only_owned: bool = False, only_unowned: bool = False, only_active: bool = False, only_unactive: bool = False, only_coached: bool = False, only_contested: bool = False, only_confirmed: bool = False, only_unconfirmed: bool = False, only_declined: bool = False, only_undeclined: bool = False) -> JSONResponse:
     filter_conditions: str = ""
     if only_owned:
-        filter_conditions += " AND users.username = BINARY %(username)s"
+        filter_conditions += " AND owners.username = BINARY %(username)s"
     if only_unowned:
-        filter_conditions += " AND users.username <> %(username)s"
+        filter_conditions += " AND owners.username <> %(username)s"
     if only_active:
         filter_conditions += " AND teams.active = 1"
     if only_unactive:
@@ -272,15 +293,17 @@ def get_teams(username: str, only_owned: bool = False, only_unowned: bool = Fals
         cursor.execute("""
             SELECT 
                 teams.name AS name,
-                users.username AS owner_user_username,
+                owners.username AS owner_user_username,
                 teams.active AS active
             FROM teams
-            INNER JOIN users ON teams.owner_user_id = users.id
-            WHERE users.username = BINARY %(username)s AND teams.individual = 0
+            INNER JOIN users AS owners ON teams.owner_user_id = owners.id
+            INNER JOIN team_members ON team_members.team_id = teams.id
+            INNER JOIN users AS members ON team_members.member_user_id = members.id
+            WHERE members.username = BINARY %(username)s AND teams.individual = 0
         """ + filter_conditions, {'username': username})
         teams: list[Any] = list(cursor.fetchall())
         if len(teams) == 0:
-            cursor.execute("SELECT 1 FROM users WHERE username = BINARY %(username)s LIMIT 1", {'username': username})
+            cursor.execute("SELECT 1 FROM users WHERE username = BINARY %(username)s AND verified = 1 LIMIT 1", {'username': username})
             if cursor.fetchone() is None:
                 raise HTTPException(status_code=404, detail="User does not exist")
         return JSONResponse({
@@ -349,7 +372,7 @@ def detect_error_team_members(cursor: MySQLCursorAbstract, team_name: str, owner
         raise HTTPException(status_code=404, detail="Team does not exist")
     if not ignore_ownership and team['owner_user_id'] != owner_user_id:
         raise HTTPException(status_code=403, detail="You are not the owner of the team")
-    cursor.execute("SELECT 1 FROM users WHERE username = BINARY %(username)s LIMIT 1", {'username': member_username})
+    cursor.execute("SELECT 1 FROM users WHERE username = BINARY %(username)s AND verified = 1 LIMIT 1", {'username': member_username})
     if cursor.fetchone() is None:
         raise HTTPException(status_code=404, detail="User does not exist")
     cursor.execute("""
@@ -371,7 +394,7 @@ def post_team_member(team_member: TeamMemberRequest, team_name: str, authorizati
         raise HTTPException(status_code=400, detail="Username is empty")
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
-        cursor.execute("SELECT id FROM users WHERE username = BINARY %(username)s LIMIT 1", {'username': team_member.member_username})
+        cursor.execute("SELECT id FROM users WHERE username = BINARY %(username)s AND verified = 1 LIMIT 1", {'username': team_member.member_username})
         member: Any = cursor.fetchone()
         if member is None:
             raise HTTPException(status_code=404, detail="User does not exist")
@@ -449,7 +472,7 @@ def get_team_member(team_name: str, member_username: str) -> JSONResponse:
             cursor.execute("SELECT 1 FROM teams WHERE name = BINARY %(team_name)s AND individual = 0 LIMIT 1", {'team_name': team_name})
             if cursor.fetchone() is None:
                 raise HTTPException(status_code=404, detail="Team does not exist")
-            cursor.execute("SELECT 1 FROM users WHERE username = BINARY %(username)s LIMIT 1", {'username': member_username})
+            cursor.execute("SELECT 1 FROM users WHERE username = BINARY %(username)s AND verified = 1 LIMIT 1", {'username': member_username})
             if cursor.fetchone() is None:
                 raise HTTPException(status_code=404, detail="User does not exist")
             raise HTTPException(status_code=404, detail="This user is not in the team")
@@ -661,11 +684,11 @@ def get_problems_users(username: str, authorization: Annotated[str | None, Heade
                 problems.private AS private
             FROM problems
             INNER JOIN users ON problems.author_user_id = users.id
-            WHERE users.username = BINARY %(username)s
+            WHERE users.username = BINARY %(username)s AND users.verified = 1
         """ + filter_conditions, {'username': username})
         problems: list[Any] = list(cursor.fetchall())
         if len(problems) == 0:
-            cursor.execute("SELECT 1 FROM users WHERE username = BINARY %(username)s LIMIT 1", {'username': username})
+            cursor.execute("SELECT 1 FROM users WHERE username = BINARY %(username)s AND verified = 1 LIMIT 1", {'username': username})
             if cursor.fetchone() is None:
                 raise HTTPException(status_code=404, detail="User does not exist")
         return JSONResponse({
@@ -1267,7 +1290,7 @@ def get_submission_public(submission_id: int)-> JSONResponse:
 def get_submissions_public_by_user(username: str)-> JSONResponse:
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
-        cursor.execute("SELECT 1 FROM users WHERE username = BINARY %(username)s LIMIT 1", {'username': username})
+        cursor.execute("SELECT 1 FROM users WHERE username = BINARY %(username)s AND verified = 1 LIMIT 1", {'username': username})
         if cursor.fetchone() is None:
             raise HTTPException(status_code=404, detail="User does not exist")
         cursor.execute("""
@@ -1285,7 +1308,7 @@ def get_submissions_public_by_user(username: str)-> JSONResponse:
             INNER JOIN problems ON submissions.problem_id = problems.id
             INNER JOIN languages ON submissions.language_id = languages.id
             INNER JOIN verdicts ON submissions.total_verdict_id = verdicts.id
-            WHERE users.username = BINARY %(username)s AND submissions.checked = 1
+            WHERE users.username = BINARY %(username)s AND users.verified = 1 AND submissions.checked = 1
         """, {'username': username})
         return JSONResponse({
             'submissions': cursor.fetchall()
@@ -1295,7 +1318,7 @@ def get_submissions_public_by_user(username: str)-> JSONResponse:
 def get_submissions_public_by_user_and_problem(username: str, problem_id: int)-> JSONResponse:
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
-        cursor.execute("SELECT 1 FROM users WHERE username = BINARY %(username)s LIMIT 1", {'username': username})
+        cursor.execute("SELECT 1 FROM users WHERE username = BINARY %(username)s AND verified = 1 LIMIT 1", {'username': username})
         if cursor.fetchone() is None:
             raise HTTPException(status_code=404, detail="User does not exist")
         cursor.execute("SELECT 1 FROM problems WHERE id = %(id)s LIMIT 1", {'id': problem_id})
@@ -1316,7 +1339,7 @@ def get_submissions_public_by_user_and_problem(username: str, problem_id: int)->
             INNER JOIN problems ON submissions.problem_id = problems.id
             INNER JOIN languages ON submissions.language_id = languages.id
             INNER JOIN verdicts ON submissions.total_verdict_id = verdicts.id
-            WHERE users.username = BINARY %(username)s AND problems.id = %(problem_id)s AND submissions.checked = 1
+            WHERE users.username = BINARY %(username)s AND users.verified = 1 AND problems.id = %(problem_id)s AND submissions.checked = 1
         """, {'username': username, 'problem_id': problem_id})
         return JSONResponse({
             'submissions': cursor.fetchall()

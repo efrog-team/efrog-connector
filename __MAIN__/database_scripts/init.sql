@@ -8,6 +8,7 @@ CREATE TABLE users (
     email VARCHAR(255) NOT NULL,
     name VARCHAR(255) NOT NULL,
     password VARCHAR(255) NOT NULL,
+    verified BOOLEAN NOT NULL,
     PRIMARY KEY (id),
     UNIQUE KEY (username),
     UNIQUE KEY (email)
@@ -177,7 +178,7 @@ INSERT INTO verdicts (text) VALUES ('Runtime Error');
 INSERT INTO verdicts (text) VALUES ('Compilation Error');
 INSERT INTO verdicts (text) VALUES ('Internal Server Error');
 
-INSERT INTO users (username, email, name, password) VALUES ('admin', 'admin@admin', 'admin', '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918');
+INSERT INTO users (username, email, name, password, verified) VALUES ('admin', 'admin@admin', 'admin', '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918', 1);
 INSERT INTO teams (name, owner_user_id, active, individual) VALUES ('admin', 1, 1, 1);
 INSERT INTO team_members (member_user_id, team_id, coach, confirmed, declined) VALUES (1, 1, 0, 1, 0);
 
