@@ -74,6 +74,27 @@
     * Response body:
         * empty
 
+* ### GET "/users/email/{email}/request-password-reset-token" — request a password reset token to be sent by email
+    * Request headers:
+        * empty
+    * Request body:
+        * empty
+    * Request parameters:
+        * email: string
+    * Response body:
+        * empty
+
+* ### GET "/users/reset-password" — reset a password
+    * Request headers:
+        * empty
+    * Request body:
+        * empty
+    * Request parameters:
+        * empty
+    * Response body:
+        * token: string (password reset token from an email)
+        * password: string
+
 * ### POST "/teams" — create a team
     * Request headers:
         * Authroization: string (access token)

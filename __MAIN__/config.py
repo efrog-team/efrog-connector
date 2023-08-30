@@ -34,3 +34,8 @@ database_config: dict[str, str | int | Type[CustomConverter] | None] = {
     'port': port,
     'converter_class': CustomConverter
 }
+
+email_config: dict[str, str] = {
+    'EMAIL': config['EMAIL'] if config['EMAIL'] is not None else '',
+    'EMAIL_PASSWORD': config['EMAIL_PASSWORD'] if config['EMAIL_PASSWORD'] is not None else ''
+}

@@ -1,10 +1,10 @@
 from fastapi import FastAPI, HTTPException, Header, WebSocket
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from models import UserRequest, UserToken, UserRequestUpdate, TeamRequest, TeamRequestUpdate, TeamMemberRequest, ProblemRequest, ProblemRequestUpdate, TestCaseRequest, TestCaseRequestUpdate, SubmissionRequest, DebugRequest, DebugRequestMany
+from models import UserRequest, UserToken, UserRequestUpdate, UserResetPassword, TeamRequest, TeamRequestUpdate, TeamMemberRequest, ProblemRequest, ProblemRequestUpdate, TestCaseRequest, TestCaseRequestUpdate, SubmissionRequest, DebugRequest, DebugRequestMany
 from mysql.connector.abstracts import MySQLCursorAbstract
 from mysql.connector.errors import IntegrityError
-from config import database_config
+from config import email_config, database_config
 from connection_cursor import ConnectionCursor
 from security.hash import hash_hex
 from security.jwt import encode_token, Token, decode_token
@@ -15,6 +15,8 @@ from concurrent.futures import ThreadPoolExecutor
 from current_websocket import CurrentWebsocket
 from typing import Any
 from json import dumps
+from smtplib import SMTP_SSL
+from email.mime.text import MIMEText
 
 checking_queue: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=4)
 current_websockets: dict[int, CurrentWebsocket] = {}
@@ -149,6 +151,32 @@ def put_user(username: str, user: UserRequestUpdate, authorization: Annotated[st
                 cursor.execute("UPDATE users SET name = %(name)s WHERE username = BINARY %(username)s", {'name': user_db['name'], 'username': username})
                 cursor.execute("UPDATE users SET password = %(password)s WHERE username = BINARY %(username)s", {'password': user_db['password'], 'username': username})
                 raise HTTPException(status_code=409, detail="This username is already taken")
+    return JSONResponse({})
+
+@app.get("/users/email/{email}/password-reset-token")
+def get_password_reset_token(email: str) -> JSONResponse:
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("SELECT id, username FROM users WHERE email = BINARY %(email)s LIMIT 1", {'email': email})
+        user: Any = cursor.fetchone()
+        if user is None:
+            raise HTTPException(status_code=404, detail="User does not exist")
+        token: str = encode_token(user['id'], user['username'], True)
+        msg = MIMEText(f"Your password reset token is:\n\n{token}\n\nВаш токен для скидання паролю:\n\n{token}\n\n")
+        msg['Subject'] = "Password reset"
+        msg['From'] = email_config['EMAIL']
+        msg['To'] = email
+        with SMTP_SSL('smtp.gmail.com', 465) as smtp_server:
+            smtp_server.login(email_config['EMAIL'], email_config['EMAIL_PASSWORD'])
+            smtp_server.sendmail(email_config['EMAIL'], email, msg.as_string())
+        return JSONResponse({})
+
+@app.post("/users/reset-password")
+def reset_password(data: UserResetPassword) -> JSONResponse:
+    token: Token = decode_token(data.token, True)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("UPDATE users SET password = %(password)s WHERE id = %(id)s", {'password': hash_hex(data.password), 'id': token.id})
     return JSONResponse({})
 
 def detect_error_teams(cursor: MySQLCursorAbstract, team_name: str, owner_user_id: int, ignore_ownership: bool, ignore_internal_server_error: bool) -> None:

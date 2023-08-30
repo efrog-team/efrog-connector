@@ -16,6 +16,10 @@ class UserToken(BaseModel):
     username: str
     password: str # unhashed
 
+class UserResetPassword(BaseModel):
+    token: str
+    password: str # unhashed
+
 class TeamRequest(BaseModel):
     name: str
 
