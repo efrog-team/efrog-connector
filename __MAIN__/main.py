@@ -1339,6 +1339,12 @@ def run_debug(debug_submission_id: int, debug_language: str, debug_code: str, de
 
 @app.post("/debug")
 def post_debug(debug: DebugRequest, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+    if debug.code == "":
+        raise HTTPException(status_code=400, detail="Code cannot be empty")
+    if debug.language_name == "":
+        raise HTTPException(status_code=400, detail="Language name cannot be empty")
+    if debug.language_version == "":
+        raise HTTPException(status_code=400, detail="Language version cannot be empty")
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
@@ -1357,6 +1363,12 @@ def post_debug(debug: DebugRequest, authorization: Annotated[str | None, Header(
 
 @app.post("/debug/many")
 def post_debug_many(debug: DebugRequestMany, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+    if debug.code == "":
+        raise HTTPException(status_code=400, detail="Code cannot be empty")
+    if debug.language_name == "":
+        raise HTTPException(status_code=400, detail="Language name cannot be empty")
+    if debug.language_version == "":
+        raise HTTPException(status_code=400, detail="Language version cannot be empty")
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
