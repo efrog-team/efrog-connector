@@ -5,9 +5,9 @@
 * ### GET "/" — root directory
     * Request headers:
         * empty
-    * Request body:
-        * empty
     * Request parameters:
+        * empty
+    * Request body:
         * empty
     * Response body:
         * examples of data types
@@ -15,13 +15,13 @@
 * ### POST "/users" — create a user
     * Request headers:
         * empty
+    * Request parameters:
+        * empty
     * Request body:
         * username: string
         * email: string
         * name: string
         * password: string
-    * Request parameters:
-        * empty
     * Response body:
         * empty
 
@@ -38,20 +38,20 @@
 * ### POST "/token" — create an access token
     * Request headers:
         * empty
+    * Request parameters:
+        * empty
     * Request body:
         * username: string
         * password: string
-    * Request parameters:
-        * empty
     * Response body:
         * token: string (access token)
 
 * ### GET "/users/me" — get an active user
     * Request headers:
         * Authroization: string (access token)
-    * Request body:
-        * empty
     * Request parameters:
+        * empty
+    * Request body:
         * empty
     * Response body:
         * username: string
@@ -61,10 +61,10 @@
 * ### GET "/users/{username}" — get a user
     * Request headers:
         * empty
-    * Request body:
-        * empty
     * Request parameters:
         * username: string
+    * Request body:
+        * empty
     * Response body:
         * username: string
         * email: string
@@ -73,36 +73,36 @@
 * ### PUT "/users/{username}" — update a user
     * Request headers:
         * Authroization: string (access token)
+    * Request parameters:
+        * username: string
     * Request body:
         * username: string?
         * email: string?
         * name: string?
         * password: string?
-    * Request parameters:
-        * username: string
     * Response body:
         * empty
 
 * ### GET "/users/password/reset/token/email/{email}" — request a password reset token to be sent by email
     * Request headers:
         * empty
-    * Request body:
-        * empty
     * Request parameters:
         * email: string
+    * Request body:
+        * empty
     * Response body:
         * empty
 
 * ### POST "/users/password/reset" — reset a password
     * Request headers:
         * empty
-    * Request body:
-        * empty
     * Request parameters:
         * empty
-    * Response body:
+    * Request body:
         * token: string (password reset token from an email)
         * password: string
+    * Response body:
+        * empty
 
 * ### POST "/teams" — create a team
     * Request headers:
@@ -117,10 +117,10 @@
 * ### GET "/teams/{team_name}" — get a team
     * Request headers:
         * empty
-    * Request body:
-        * empty
     * Request parameters:
         * team_name: string
+    * Request body:
+        * empty
     * Response body:
         * name: string
         * owner_user_username: string
@@ -129,10 +129,10 @@
 * ### PUT "/teams/{team_name}" — update a team
     * Request headers:
         * Authroization: string (access token)
-    * Request body:
-        * team_name: string
     * Request parameters:
         * name: string
+    * Request body:
+        * team_name: string
     * Response body:
         * empty
 
@@ -587,15 +587,14 @@
         * total_score: integer
         * total_verdict: string
         * results: array[ {
-            * id: integer
-            * submission_id: integer
             * test_case_id: integer
             * test_case_score: integer
             * test_case_opened: boolean
             * verdict_text: string
             * time_taken: integer
             * cpu_time_taken: integer
-            * memory_taken: integer
+            * virtual_memory_taken: integer
+            * physical_memory_taken: integer
         } ]
 
 * ### GET "/submissions/{submission_id}" — get a submission
@@ -621,15 +620,14 @@
         * total_score: integer
         * total_verdict: string
         * results: array[ {
-            * id: integer
-            * submission_id: integer
             * test_case_id: integer
             * test_case_score: integer
             * test_case_opened: boolean
             * verdict_text: string
             * time_taken: integer
             * cpu_time_taken: integer
-            * memory_taken: integer
+            * virtual_memory_taken: integer
+            * physical_memory_taken: integer
         } ]
     * Response body (202 Code):
         * id: integer
@@ -651,15 +649,14 @@
         * status: 200
         * count: integer
         * result: {
-            * id: integer
-            * submission_id: integer
             * test_case_id: integer
             * test_case_score: integer
             * test_case_opened: boolean
             * verdict_text: string
             * time_taken: integer
             * cpu_time_taken: integer
-            * memory_taken: integer
+            * virtual_memory_taken: integer
+            * physical_memory_taken: integer
         }
     * Type totals:
         * type: string (totals)
@@ -732,12 +729,50 @@
             * total_verdict: string
         } ]
 
+* ### POST "/debug" — create a submission
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * empty
+    * Request body:
+        * code: string
+        * language_name: string
+        * language_version: string
+        * input: string
+    * Response body:
+        * verdict_text: string
+        * time_taken: integer
+        * cpu_time_taken: integer
+        * virtual_memory_taken: integer
+        * physical_memory_taken: integer
+        * output: string
+
+* ### POST "/debug" — create a submission
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * empty
+    * Request body:
+        * code: string
+        * language_name: string
+        * language_version: string
+        * input: array [ string ]
+    * Response body:
+        * results: array[ {
+            * verdict_text: string
+            * time_taken: integer
+            * cpu_time_taken: integer
+            * virtual_memory_taken: integer
+            * physical_memory_taken: integer
+            * output: string
+        }]
+
 * ### Possible verdicts (in order of priorities for the total verdict):
     * Unchecked
-    * Correct Answer
+    * Correct Answer / OK
     * Wrong Answer
-    * Time Limit Exceeded
-    * Memory Limit Exceeded
+    * Time Limit Exceeded / Time Limit Exceeded (10s)
+    * Memory Limit Exceeded / Memory Limit Exceeded (1024MB)
     * Runtime Error
     * Compilation Error
     * Internal Server Error

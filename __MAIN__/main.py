@@ -119,6 +119,17 @@ def get_user_me(authorization: Annotated[str | None, Header()]) -> JSONResponse:
             raise HTTPException(status_code=404, detail="User from the token does not exist")
         return JSONResponse(user)
 
+@app.get("/users/me/id")
+def get_user_me_id(authorization: Annotated[str | None, Header()]) -> JSONResponse:
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("SELECT id FROM users WHERE id = %(id)s LIMIT 1", {'id':token.id})
+        user: Any = cursor.fetchone()
+        if user is None:
+            raise HTTPException(status_code=404, detail="User from the token does not exist")
+        return JSONResponse(user)
+
 @app.get("/users/{username}")
 def get_user(username: str) -> JSONResponse:  
     cursor: MySQLCursorAbstract
@@ -1028,28 +1039,27 @@ def check_submission(submission_id: int, problem_id: int, code: str, language: s
                 if test_result.status == 0:
                     correct_score += test_case['score']
             else:
-                test_result: TestResult = TestResult(status=create_files_result.status, time=0, cpu_time=0, memory=0)
+                test_result: TestResult = TestResult(status=create_files_result.status, time=0, cpu_time=0, virtual_memory=0, physical_memory=0)
             cursor.execute("SELECT text FROM verdicts WHERE id = %(verdict_id)s", {'verdict_id': test_result.status + 2})
             verdict: Any = cursor.fetchone()
             cursor.execute("""
-                INSERT INTO submission_results (submission_id, test_case_id, verdict_id, time_taken, cpu_time_taken, memory_taken)
-                VALUES (%(submission_id)s, %(test_case_id)s, %(verdict_id)s, %(time_taken)s, %(cpu_time_taken)s, %(memory_taken)s)
-            """, {'submission_id': submission_id, 'test_case_id': test_case['id'], 'verdict_id': test_result.status + 2, 'time_taken': test_result.time, 'cpu_time_taken': test_result.cpu_time, 'memory_taken': test_result.memory})
+                INSERT INTO submission_results (submission_id, test_case_id, verdict_id, time_taken, cpu_time_taken, virtual_memory_taken, physical_memory_taken)
+                VALUES (%(submission_id)s, %(test_case_id)s, %(verdict_id)s, %(time_taken)s, %(cpu_time_taken)s, %(virtual_memory_taken)s, %(physical_memory_taken)s)
+            """, {'submission_id': submission_id, 'test_case_id': test_case['id'], 'verdict_id': test_result.status + 2, 'time_taken': test_result.time, 'cpu_time_taken': test_result.cpu_time, 'virtual_memory_taken': test_result.virtual_memory, 'physical_memory_taken': test_result.physical_memory})
             if not no_realtime:
                 run(current_websockets[submission_id].send_message(dumps({
                     'type': 'result',
                     'status': 200,
                     'count': index + 1,
                     'result': {
-                        'id': cursor.lastrowid,
-                        'submission_id': submission_id,
                         'test_case_id': test_case['id'],
                         'test_case_score': test_case['score'],
                         'test_case_opened': test_case['opened'],
                         'verdict_text': verdict['text'],
                         'time_taken': test_result.time,
                         'cpu_time_taken': test_result.cpu_time,
-                        'memory_taken': test_result.memory
+                        'virtual_memory_taken': test_result.virtual_memory,
+                        'physical_memory_taken': test_result.physical_memory
                     }
                 })))
             total_score += test_case['score']
@@ -1135,15 +1145,14 @@ def submit(submission: SubmissionRequest, authorization: Annotated[str | None, H
             submission_db: Any = cursor.fetchone()
             cursor.execute("""
                 SELECT
-                    submission_results.id AS id,
-                    submission_results.submission_id AS submission_id,
                     submission_results.test_case_id AS test_case_id,
                     test_cases.score AS test_case_score,
                     test_cases.opened AS test_case_opened,
                     verdicts.text AS verdict_text,
                     submission_results.time_taken AS time_taken,
                     submission_results.cpu_time_taken AS cpu_time_taken,
-                    submission_results.memory_taken AS memory_taken
+                    submission_results.virtual_memory_taken AS virtual_memory_taken,
+                    submission_results.physical_memory_taken AS physical_memory_taken
                 FROM submission_results
                 INNER JOIN test_cases ON submission_results.test_case_id = test_cases.id
                 INNER JOIN verdicts ON submission_results.verdict_id = verdicts.id
@@ -1192,15 +1201,14 @@ def get_submission(submission_id: int, authorization: Annotated[str | None, Head
             submission: Any = cursor.fetchone()
             cursor.execute("""
                 SELECT
-                    submission_results.id AS id,
-                    submission_results.submission_id AS submission_id,
                     submission_results.test_case_id AS test_case_id,
                     test_cases.score AS test_case_score,
                     test_cases.opened AS test_case_opened,
                     verdicts.text AS verdict_text,
                     submission_results.time_taken AS time_taken,
                     submission_results.cpu_time_taken AS cpu_time_taken,
-                    submission_results.memory_taken AS memory_taken
+                    submission_results.virtual_memory_taken AS virtual_memory_taken,
+                    submission_results.physical_memory_taken AS physical_memory_taken
                 FROM submission_results
                 INNER JOIN test_cases ON submission_results.test_case_id = test_cases.id
                 INNER JOIN verdicts ON submission_results.verdict_id = verdicts.id
@@ -1353,10 +1361,11 @@ def run_debug(debug_submission_id: int, debug_language: str, debug_code: str, de
             debug_result: DebugResult = lib.debug(debug_submission_id, index + 1, debug_language, debug_input)
             if debug_result.status == 0:
                 results.append({
-                    'verdict': 'OK',
-                    'time': debug_result.time,
-                    'cpu_time': debug_result.cpu_time,
-                    'memory': debug_result.memory,
+                    'verdict_text': 'OK',
+                    'time_taken': debug_result.time,
+                    'cpu_time_taken': debug_result.cpu_time,
+                    'virtual_memory_taken': debug_result.virtual_memory,
+                    'physical_memory_taken': debug_result.physical_memory,
                     'output': debug_result.output
                 })
             else:
@@ -1371,18 +1380,20 @@ def run_debug(debug_submission_id: int, debug_language: str, debug_code: str, de
                     case _:
                         verdict = 'Internal Server Error'
                 results.append({
-                    'verdict': verdict,
-                    'time': debug_result.time,
-                    'cpu_time': debug_result.cpu_time,
-                    'memory': debug_result.memory,
+                    'verdict_text': verdict,
+                    'time_taken': debug_result.time,
+                    'cpu_time_taken': debug_result.cpu_time,
+                    'virtual_memory_taken': debug_result.virtual_memory,
+                    'physical_memory_taken': debug_result.physical_memory,
                     'output': debug_result.output
                 })
         else:
             results.append({
-                'verdict': 'Compilation Error',
-                'time': 0,
-                'cpu_time': 0,
-                'memory': 0,
+                'verdict_text': 'Compilation Error',
+                'time_taken': 0,
+                'cpu_time_taken': 0,
+                'virtual_memory_taken': 0,
+                'physical_memory_taken': 0,
                 'output': create_files_result.description
             })
     lib.delete_files(debug_submission_id)

@@ -11,13 +11,15 @@ class TestResultCTypes(Structure):
     _fields_ = [('status', c_int),
                 ('time', c_int),
                 ('cpu_time', c_int),
-                ('memory', c_int)]
+                ('virtual_memory', c_int),
+                ('physical_memory', c_int)]
 
 class DebugResultCTypes(Structure):
     _fields_ = [('status', c_int),
                 ('time', c_int),
                 ('cpu_time', c_int),
-                ('memory', c_int),
+                ('virtual_memory', c_int),
+                ('physical_memory', c_int),
                 ('output', c_char_p)]
 
 class CreateFilesResult:
@@ -26,18 +28,20 @@ class CreateFilesResult:
         self.description = description
 
 class TestResult:
-    def __init__(self, status: int, time: int, cpu_time: int, memory: int) -> None:
+    def __init__(self, status: int, time: int, cpu_time: int, virtual_memory: int, physical_memory: int) -> None:
         self.status = status
         self.time = time
         self.cpu_time = cpu_time
-        self.memory = memory
+        self.virtual_memory = virtual_memory
+        self.physical_memory = physical_memory
 
 class DebugResult:
-    def __init__(self, status: int, time: int, cpu_time: int, memory: int, output: str) -> None:
+    def __init__(self, status: int, time: int, cpu_time: int, virtual_memory: int, physical_memory: int, output: str) -> None:
         self.status = status
         self.time = time
         self.cpu_time = cpu_time
-        self.memory = memory
+        self.virtual_memory = virtual_memory
+        self.physical_memory = physical_memory
         self.output = output
 
 class Library:
@@ -70,11 +74,11 @@ class Library:
 
     def check_test_case(self, submission_id: int, test_case_id: int, language: str, input: str, solution: str, time_limit: int, memory_limit: int) -> TestResult:
         result: Any = self.lib.check_test_case(submission_id, test_case_id, language.encode('utf-8'), input.encode('utf-8'), solution.encode('utf-8'), time_limit, memory_limit).contents
-        return TestResult(result.status, result.time, result.cpu_time, result.memory)
+        return TestResult(result.status, result.time, result.cpu_time, result.virtual_memory, result.physical_memory)
 
     def debug(self, debug_submission_id: int, debug_test_id: int, language: str, input: str) -> DebugResult:
         result: Any = self.lib.debug(debug_submission_id, debug_test_id, language.encode('utf-8'), input.encode('utf-8')).contents
-        return DebugResult(result.status, result.time, result.cpu_time, result.memory, result.output.decode('utf-8'))
+        return DebugResult(result.status, result.time, result.cpu_time, result.virtual_memory, result.physical_memory, result.output.decode('utf-8'))
 
     def delete_files(self, submission_id: int) -> int:
         return self.lib.delete_files(submission_id)
