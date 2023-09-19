@@ -137,7 +137,7 @@ def get_user(username: str) -> JSONResponse:
         cursor.execute("SELECT username, email, name FROM users WHERE username = BINARY %(username)s AND verified = 1 LIMIT 1", {'username': username})
         user: Any = cursor.fetchone()
         if user is None:
-            raise HTTPException(status_code=404, detail="User from the token does not exist")
+            raise HTTPException(status_code=404, detail="User does not exist")
         return JSONResponse(user)
 
 @app.get("/users/{username}/id")
@@ -147,7 +147,17 @@ def get_user_id(username: str) -> JSONResponse:
         cursor.execute("SELECT id FROM users WHERE username = BINARY %(username)s AND verified = 1 LIMIT 1", {'username': username})
         user: Any = cursor.fetchone()
         if user is None:
-            raise HTTPException(status_code=404, detail="User from the token does not exist")
+            raise HTTPException(status_code=404, detail="User does not exist")
+        return JSONResponse(user)
+
+@app.get("/users/id/{id}")
+def get_user_by_id(id: int) -> JSONResponse:  
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("SELECT username, email, name FROM users WHERE id = %(id)s AND verified = 1 LIMIT 1", {'id': id})
+        user: Any = cursor.fetchone()
+        if user is None:
+            raise HTTPException(status_code=404, detail="User does not exist")
         return JSONResponse(user)
 
 @app.put("/users/{username}")
