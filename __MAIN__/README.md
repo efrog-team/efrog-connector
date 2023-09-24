@@ -777,7 +777,7 @@
     * Compilation Error
     * Internal Server Error
 
-* ### POST "/xcompetitions" — create a competition
+* ### POST "/competitions" — create a competition
     * Request headers:
         * Authroization: string (access token)
     * Request parameters:
