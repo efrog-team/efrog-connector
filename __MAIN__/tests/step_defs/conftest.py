@@ -386,3 +386,108 @@ def submission(fields: str, name: str, names_convert: dict[str, str], data: dict
             data['language_name'] = 'Python 3'
         if 'language_version' in fields_list:
             data['language_version'] = '3.10'
+
+# Competitions ----------------------------------------------------------
+
+@given(parsers.parse("{fields} of {name} competition"))
+def competition(fields: str, name: str, names_convert: dict[str, str], data: dict[str, str | int | bool]) -> None:
+    fields_list: list[str] = []
+    if fields == "all data":
+        fields_list = ['name', 'description', 'start_time', 'end_time', 'private', 'maximum_team_members_number']
+    else:
+        fields_list = fields.replace(" and ", ", ").split(", ")
+    if name == "the correct public":
+        if 'id' in fields_list:
+            data['id'] = 1
+        if 'name' in fields_list:
+            data['name'] = 'The first public competition'
+        if 'description' in fields_list:
+            data['description'] = 'The first public competition'
+        if 'start_time' in fields_list:
+            data['start_time'] = '2022-01-01 00:00:00'
+        if 'end_time' in fields_list:
+            data['end_time'] = '2023-01-01 00:00:00'
+        if 'private' in fields_list:
+            data['private'] = 0
+        if 'maximum_team_members_number' in fields_list:
+            data['maximum_team_members_number'] = 3
+    elif name == "the correct private":
+        if 'id' in fields_list:
+            data['id'] = 2
+        if 'name' in fields_list:
+            data['name'] = 'The first private competition'
+        if 'description' in fields_list:
+            data['description'] = 'The first private competition'
+        if 'start_time' in fields_list:
+            data['start_time'] = '2022-01-01 00:00:00'
+        if 'end_time' in fields_list:
+            data['end_time'] = '2023-01-01 00:00:00'
+        if 'private' in fields_list:
+            data['private'] = 1
+        if 'maximum_team_members_number' in fields_list:
+            data['maximum_team_members_number'] = 3
+    else:
+        if 'id' in fields_list:
+            data['id'] = 3
+        if 'name' in fields_list:
+            data['name'] = names_convert[name]
+        if 'description' in fields_list:
+            data['description'] = names_convert[name] + ' description'
+        if 'start_time' in fields_list:
+            data['start_time'] = '2021-01-01 00:00:00'
+        if 'end_time' in fields_list:
+            data['end_time'] = '2022-01-01 00:00:00'
+        if 'private' in fields_list:
+            data['private'] = 0
+        if 'maximum_team_members_number' in fields_list:
+            data['maximum_team_members_number'] = 3
+
+@then(parsers.parse("add {name} competition to the database"))
+def competition_in_database(name: str, names_convert: dict[str, str]) -> None:
+    if name == "the correct public" and client.get('/competitions/2').status_code == 404:
+        client.post('/competitions?past_times=true', json={
+            'name': 'The first public competition',
+            'description': 'The first public competition',
+            'start_time': '2022-01-01 00:00:00',
+            'end_time': '2023-01-01 00:00:00',
+            'private': 0,
+            'maximum_team_members_number': 3
+        }, headers={
+            'Authorization': client.post('/token', json={
+                'username': "correct",
+                'password': "correct"
+            }).json()['token']
+        })
+    elif name == "the correct private" and client.get('/competitions/3', headers={
+            'Authorization': client.post('/token', json={
+                'username': "correct",
+                'password': "correct"
+            }).json()['token']
+        }).status_code == 404:
+        client.post('/competitions?past_times=true', json={
+            'name': 'The first private competition',
+            'description': 'The first private competition',
+            'start_time': '2022-01-01 00:00:00',
+            'end_time': '2023-01-01 00:00:00',
+            'private': 1,
+            'maximum_team_members_number': 3
+        }, headers={
+            'Authorization': client.post('/token', json={
+                'username': "correct",
+                'password': "correct"
+            }).json()['token']
+        })
+    elif client.get('/competitions/4').status_code == 404:
+        client.post('/competitions?past_times=true', json={
+            'name': names_convert[name],
+            'description': names_convert[name] + ' description',
+            'start_time': '2021-01-01 00:00:00',
+            'end_time': '2022-01-01 00:00:00',
+            'private': 0,
+            'maximum_team_members_number': 3
+        }, headers={
+            'Authorization': client.post('/token', json={
+                'username': "correct",
+                'password': "correct"
+            }).json()['token']
+        })

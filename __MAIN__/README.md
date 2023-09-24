@@ -776,3 +776,89 @@
     * Runtime Error
     * Compilation Error
     * Internal Server Error
+
+* ### POST "/xcompetitions" — create a competition
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * empty
+    * Request body:
+        * name: string
+        * description: string
+        * start_time: string
+        * end_time: string
+        * private: boolean
+        * maximum_team_members_number: integer
+    * Response body:
+        * competiton_id: integer
+
+* ### GET "/competitions/{competition_id}" — get a competition
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * competition_id: integer
+    * Request body:
+        * empty
+    * Response body:
+        * id: integer
+        * author_user_username: string
+        * name: string
+        * description: string
+        * start_time: string (in the form of datetime %Y-%m-%d %H:%M:%S)
+        * end_time: string (in the form of datetime %Y-%m-%d %H:%M:%S)
+        * private: boolean
+        * maximum_team_members_number: integer
+
+* ### PUT "/competitions/{competition_id}/make-public" — make a competition public
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * competition_id: integer
+    * Request body:
+        * empty
+    * Response body:
+        * empty
+
+* ### PUT "/competitions/{competition_id}/make-private" — make a competition private
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * competition_id: integer
+    * Request body:
+        * empty
+    * Response body:
+        * empty
+
+* ### GET "/competitions/{competition_id}/check-if-can-be-edited" — check if a competition can be edited
+    * Request headers:
+        * empty
+    * Request parameters:
+        * competition_id: integer
+    * Request body:
+        * empty
+    * Response body:
+        * can: boolean
+
+* ### PUT "/competitions/{competition_id}" — update a competition
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * competition_id: integer
+    * Request body:
+        * name: string?
+        * description: string?
+        * start_time: string? (in the form of datetime %Y-%m-%d %H:%M:%S)
+        * end_time: string? (in the form of datetime %Y-%m-%d %H:%M:%S)
+        * maximum_team_members_number: integer?
+    * Response body:
+        * empty
+
+* ### DELETE "/competitions/{competition_id}" — delete a competition
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * competition_id: integer
+    * Request body:
+        * empty
+    * Response body:
+        * empty

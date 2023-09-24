@@ -79,3 +79,18 @@ class DebugRequestMany(BaseModel):
     language_name: str
     language_version: str
     inputs: list[str]
+
+class CompetitionRequest(BaseModel):
+    name: str
+    description: str
+    start_time: str
+    end_time: str
+    private: bool
+    maximum_team_members_number: int
+
+class CompetitionRequestUpdate(BaseModel):
+    name: str | None
+    description: str | None
+    start_time: str | None
+    end_time: str | None
+    maximum_team_members_number: int | None

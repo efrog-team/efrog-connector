@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Header, WebSocket
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from models import UserRequest, UserToken, UserRequestUpdate, UserVerifyEmail, UserResetPassword, TeamRequest, TeamRequestUpdate, TeamMemberRequest, ProblemRequest, ProblemRequestUpdate, TestCaseRequest, TestCaseRequestUpdate, SubmissionRequest, DebugRequest, DebugRequestMany
+from models import UserRequest, UserToken, UserRequestUpdate, UserVerifyEmail, UserResetPassword, TeamRequest, TeamRequestUpdate, TeamMemberRequest, ProblemRequest, ProblemRequestUpdate, TestCaseRequest, TestCaseRequestUpdate, SubmissionRequest, DebugRequest, DebugRequestMany, CompetitionRequest, CompetitionRequestUpdate
 from mysql.connector.abstracts import MySQLCursorAbstract
 from mysql.connector.errors import IntegrityError
 from config import email_config, database_config
@@ -17,6 +17,7 @@ from typing import Any
 from json import dumps
 from smtplib import SMTP_SSL
 from email.mime.text import MIMEText
+from datetime import datetime
 
 checking_queue: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=4)
 current_websockets: dict[int, CurrentWebsocket] = {}
@@ -593,7 +594,7 @@ def detect_error_problems(cursor: MySQLCursorAbstract, problem_id: int, author_u
     if problem is None:
         raise HTTPException(status_code=404, detail="Problem does not exist")
     if ((problem['private'] == 1 and not ignore_ownership_if_private) or (problem['private'] == 0 and not ignore_ownership_if_public)) and problem['author_user_id'] != author_user_id:
-        raise HTTPException(status_code=403, detail="You are not the owner of the problem")
+        raise HTTPException(status_code=403, detail="You are not the author of the problem")
     if not ignore_internal_server_error:
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
@@ -613,7 +614,7 @@ def post_problem(problem: ProblemRequest, authorization: Annotated[str | None, H
         cursor.execute("""
             INSERT INTO problems (author_user_id, name, statement, input_statement, output_statement, notes, time_restriction, memory_restriction, private)
             VALUES (%(author_user_id)s, %(name)s, %(statement)s, %(input_statement)s, %(output_statement)s, %(notes)s, %(time_restriction)s, %(memory_restriction)s, %(private)s)
-            """, {'author_user_id': token.id, 'name': problem.name, 'statement': problem.statement, 'input_statement': problem.input_statement, 'output_statement': problem.output_statement, 'notes': problem.notes, 'time_restriction': problem.time_restriction, 'memory_restriction': problem.memory_restriction, 'private': int(problem.private)})
+        """, {'author_user_id': token.id, 'name': problem.name, 'statement': problem.statement, 'input_statement': problem.input_statement, 'output_statement': problem.output_statement, 'notes': problem.notes, 'time_restriction': problem.time_restriction, 'memory_restriction': problem.memory_restriction, 'private': int(problem.private)})
         problem_id: int | None = cursor.lastrowid
         if problem_id is None:
             raise HTTPException(status_code=500, detail="Internal Server Error")
@@ -752,7 +753,7 @@ def check_if_problem_can_be_edited(cursor: MySQLCursorAbstract, problem_id: int,
     if problem['private']:
         token: Token = decode_token(authorization)
         if token.id != problem['author_user_id']:
-            raise HTTPException(status_code=403, detail="You are not the owner of the problem")
+            raise HTTPException(status_code=403, detail="You are not the author of the problem")
     cursor.execute("SELECT 1 FROM submissions WHERE problem_id = %(problem_id)s LIMIT 1", {'problem_id': problem_id})
     return len(cursor.fetchall()) == 0
 
@@ -811,8 +812,7 @@ def delete_problem(problem_id: int, authorization: Annotated[str | None, Header(
         cursor.execute("""
             DELETE problems
             FROM problems
-            INNER JOIN users ON problems.author_user_id = users.id
-            WHERE problems.id = %(problem_id)s AND users.id = %(author_user_id)s
+            WHERE id = %(problem_id)s AND author_user_id = %(author_user_id)s
         """, {'problem_id': problem_id, 'author_user_id': token.id})
         if cursor.rowcount == 0:
             detect_error_problems(cursor, problem_id, token.id, False, False, False)
@@ -831,7 +831,7 @@ def post_test_case(problem_id: int, test_case: TestCaseRequest, authorization: A
         cursor.execute("""
             INSERT INTO test_cases (problem_id, input, solution, score, opened)
             VALUES (%(problem_id)s, %(input)s, %(solution)s, %(score)s, %(opened)s)
-            """, {'problem_id': problem_id, 'input': test_case.input, 'solution': test_case.solution, 'score': test_case.score, 'opened': int(test_case.opened)})
+        """, {'problem_id': problem_id, 'input': test_case.input, 'solution': test_case.solution, 'score': test_case.score, 'opened': int(test_case.opened)})
         test_case_id: int | None = cursor.lastrowid
         if test_case_id is None:
             raise HTTPException(status_code=500, detail="Internal Server Error")
@@ -876,7 +876,7 @@ def get_test_cases(problem_id: int, authorization: Annotated[str | None, Header(
         if problem['private'] == 1 or not only_opened:
             token: Token = decode_token(authorization)
             if token.id != problem['author_user_id']:
-                raise HTTPException(status_code=403, detail="You are not the owner of this private problem")
+                raise HTTPException(status_code=403, detail="You are not the author of this private problem")
         cursor.execute("""
             SELECT id, problem_id, input, solution, score, opened
             FROM test_cases
@@ -918,7 +918,7 @@ def get_problem_full(problem_id: int, authorization: Annotated[str | None, Heade
         if problem['private'] == 1 or not only_opened:
             token: Token = decode_token(authorization)
             if token.username != problem['author_user_username']:
-                raise HTTPException(status_code=403, detail="You are not the owner of this private problem")
+                raise HTTPException(status_code=403, detail="You are not the author of this private problem")
         cursor.execute("""
             SELECT id, problem_id, input, solution, score, opened
             FROM test_cases
@@ -937,9 +937,8 @@ def put_make_test_case_opened(problem_id: int, test_case_id: int, authorization:
         cursor.execute("""
             UPDATE test_cases
             INNER JOIN problems ON test_cases.problem_id = problems.id
-            INNER JOIN users ON problems.author_user_id = users.id
             SET test_cases.opened = 1
-            WHERE test_cases.id = %(test_case_id)s AND test_cases.problem_id = %(problem_id)s AND users.id = %(author_user_id)s
+            WHERE test_cases.id = %(test_case_id)s AND test_cases.problem_id = %(problem_id)s AND problems.author_user_id = %(author_user_id)s
         """, {'test_case_id': test_case_id, 'problem_id': problem_id, 'author_user_id': token.id})
         if cursor.rowcount == 0:
             detect_error_problems(cursor, problem_id, token.id, False, False, True)
@@ -955,9 +954,8 @@ def put_make_test_case_closed(problem_id: int, test_case_id: int, authorization:
         cursor.execute("""
             UPDATE test_cases
             INNER JOIN problems ON test_cases.problem_id = problems.id
-            INNER JOIN users ON problems.author_user_id = users.id
             SET test_cases.opened = 0
-            WHERE test_cases.id = %(test_case_id)s AND test_cases.problem_id = %(problem_id)s AND users.id = %(author_user_id)s
+            WHERE test_cases.id = %(test_case_id)s AND test_cases.problem_id = %(problem_id)s AND problems.author_user_id = %(author_user_id)s
         """, {'test_case_id': test_case_id, 'problem_id': problem_id, 'author_user_id': token.id})
         if cursor.rowcount == 0:
             detect_error_problems(cursor, problem_id, token.id, False, False, True)
@@ -984,9 +982,8 @@ def put_test_case(problem_id: int, test_case_id: int, test_case: TestCaseRequest
         cursor.execute(f"""
             UPDATE test_cases
             INNER JOIN problems ON test_cases.problem_id = problems.id
-            INNER JOIN users ON problems.author_user_id = users.id
             SET """ + update_set[:-2] + ' ' + """
-            WHERE test_cases.id = %(test_case_id)s AND test_cases.problem_id = %(problem_id)s AND users.id = %(author_user_id)s
+            WHERE test_cases.id = %(test_case_id)s AND test_cases.problem_id = %(problem_id)s AND problems.author_user_id = %(author_user_id)s
         """, update_dict)
         if cursor.rowcount == 0:
             detect_error_problems(cursor, problem_id, token.id, False, False, True)
@@ -1003,8 +1000,7 @@ def delete_test_case(problem_id: int, test_case_id: int, authorization: Annotate
             DELETE test_cases
             FROM test_cases
             INNER JOIN problems ON test_cases.problem_id = problems.id
-            INNER JOIN users ON problems.author_user_id = users.id
-            WHERE test_cases.id = %(test_case_id)s AND problem_id = %(problem_id)s AND users.id = %(author_user_id)s
+            WHERE test_cases.id = %(test_case_id)s AND test_cases.problem_id = %(problem_id)s AND problems.author_user_id = %(author_user_id)s
         """, {'test_case_id': test_case_id, 'problem_id': problem_id, 'author_user_id': token.id})
         if cursor.rowcount == 0:
             detect_error_problems(cursor, problem_id, token.id, False, False, False)
@@ -1458,3 +1454,186 @@ def post_debug_many(debug: DebugRequestMany, authorization: Annotated[str | None
         return JSONResponse({
             'results': debugging_queue.submit(run_debug, debug_submission_id, f"{debug.language_name} ({debug.language_version})", debug.code, debug.inputs).result()
         })
+
+def convert_and_validate_datetime(date: str, field_name: str = "") -> datetime:
+    try:
+        return datetime.strptime(date, "%Y-%m-%d %H:%M:%S")
+    except:
+        raise HTTPException(status_code=400, detail=f"{field_name if field_name != '' else 'Datetime'} either has an invalid format or is invalid itself")
+
+@app.post("/competitions")
+def post_competition(competition: CompetitionRequest, authorization: Annotated[str | None, Header()], past_times: bool = False) -> JSONResponse:
+    token: Token = decode_token(authorization)
+    if competition.name == "":
+        raise HTTPException(status_code=400, detail="Name is empty")
+    if len(competition.name) < 3:
+        raise HTTPException(status_code=400, detail="Name is too short")
+    if convert_and_validate_datetime(competition.start_time, "start_time") > convert_and_validate_datetime(competition.end_time, "end_time"):
+        raise HTTPException(status_code=400, detail="Start time is after end time")
+    if (not past_times and convert_and_validate_datetime(competition.start_time, "start_time") < datetime.now()):
+        raise HTTPException(status_code=400, detail="Start time is in the past")
+    if (not past_times and convert_and_validate_datetime(competition.start_time, "end_time") < datetime.now()):
+        raise HTTPException(status_code=400, detail="End time is in the past")
+    if competition.maximum_team_members_number < 1:
+        raise HTTPException(status_code=400, detail="Maximum team members number cannot be less than 1")
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("""
+            INSERT INTO competitions (author_user_id, name, description, start_time, end_time, private, maximum_team_members_number)
+            VALUES (%(author_user_id)s, %(name)s, %(description)s, %(start_time)s, %(end_time)s, %(private)s, %(maximum_team_members_number)s)
+        """, {'author_user_id': token.id, 'name': competition.name, 'description': competition.description, 'start_time': convert_and_validate_datetime(competition.start_time, 'start_time'), 'end_time': convert_and_validate_datetime(competition.end_time, 'end_time'), 'private': competition.private, 'maximum_team_members_number': competition.maximum_team_members_number})
+        competition_id: int | None = cursor.lastrowid
+        if competition_id is None:
+            raise HTTPException(status_code=500, detail="Internal server error")
+        return JSONResponse({
+            'competition_id': competition_id
+        })
+
+@app.get("/competitions/{competition_id}")
+def get_competition(competition_id: int, authorization: Annotated[str | None, Header()] = None) -> JSONResponse:
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("""
+            SELECT
+                competitions.id AS id,
+                users.username AS author_user_username, 
+                competitions.name AS name,
+                competitions.description AS description,
+                competitions.start_time AS start_time,
+                competitions.end_time AS end_time,
+                competitions.private AS private,
+                competitions.maximum_team_members_number AS maximum_team_members_number
+            FROM competitions
+            INNER JOIN users ON competitions.author_user_id = users.id
+            WHERE competitions.id = %(id)s
+            LIMIT 1
+        """, {'id': competition_id})
+        competition: Any = cursor.fetchone()
+        if competition is None:
+            raise HTTPException(status_code=404, detail="Competition does not exist")
+        if competition['private']:
+            token: Token = decode_token(authorization)
+            if competition['author_user_username'] != token.username:
+                cursor.execute("""
+                    SELECT 1
+                    FROM team_members
+                    INNER JOIN competition_participants ON team_members.team_id = competition_participants.team_id
+                    WHERE competition_participants.competition_id = %(id)s AND team_members.member_user_id = %(user_id)s
+                    LIMIT 1
+                """, {'id': competition_id, 'user_id': token.id})
+                if cursor.fetchone() is None:
+                    raise HTTPException(status_code=403, detail="You do not have permission to view this competition")
+        return JSONResponse(competition)
+
+def detect_error_competitions(cursor: MySQLCursorAbstract, competition_id: int, author_user_id: int, ignore_ownership_if_private: bool, ignore_ownership_if_public: bool, ignore_internal_server_error: bool) -> None:
+    cursor.execute("SELECT author_user_id, private FROM competitions WHERE id = %(competition_id)s LIMIT 1", {'competition_id': competition_id})
+    competition: Any = cursor.fetchone()
+    if competition is None:
+        raise HTTPException(status_code=404, detail="Competition does not exist")
+    if ((competition['private'] == 1 and not ignore_ownership_if_private) or (competition['private'] == 0 and not ignore_ownership_if_public)) and competition['author_user_id'] != author_user_id:
+        raise HTTPException(status_code=403, detail="You are not the author of the competition")
+    if not ignore_internal_server_error:
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+@app.put("/competitions/{competition_id}/make-public")
+def put_make_competition_public(competition_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("""
+            UPDATE competitions
+            SET private = 0
+            WHERE id = %(competition_id)s AND author_user_id = %(author_user_id)s
+        """, {'competition_id': competition_id, 'author_user_id': token.id})
+        if cursor.rowcount == 0:
+            detect_error_competitions(cursor, competition_id, token.id, False, False, True)
+    return JSONResponse({})
+
+@app.put("/competitions/{competition_id}/make-private")
+def put_make_competition_private(competition_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("""
+            UPDATE competitions
+            SET private = 1
+            WHERE id = %(competition_id)s AND author_user_id = %(author_user_id)s
+        """, {'competition_id': competition_id, 'author_user_id': token.id})
+        if cursor.rowcount == 0:
+            detect_error_competitions(cursor, competition_id, token.id, False, False, True)
+    return JSONResponse({})
+
+def check_if_competition_can_be_edited(cursor: MySQLCursorAbstract, competition_id: int, authorization: str | None) -> bool:
+    cursor.execute("SELECT author_user_id, private FROM competitions WHERE id = %(id)s", {'id': competition_id})
+    competition: Any = cursor.fetchone()
+    if competition is None:
+        raise HTTPException(status_code=404, detail="Competition does not exist")
+    if competition['private']:
+        token: Token = decode_token(authorization)
+        if token.id != competition['author_user_id']:
+            raise HTTPException(status_code=403, detail="You are not the author of the competition")
+    cursor.execute("SELECT 1 FROM competitions WHERE id = %(id)s AND end_time > NOW() LIMIT 1", {'id': competition_id})
+    return len(cursor.fetchall()) == 0
+
+@app.get("/competitions/{competition_id}/check-if-can-be-edited")
+def get_check_if_competition_can_be_edited(competition_id: int, authorization: Annotated[str | None, Header()] = None) -> JSONResponse:
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        return JSONResponse({
+            'can': check_if_competition_can_be_edited(cursor, competition_id, authorization)
+        })
+
+@app.put("/competitions/{competition_id}")
+def put_competition(competition_id: int, competition: CompetitionRequestUpdate, authorization: Annotated[str | None, Header()], past_times: bool = False) -> JSONResponse:
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        update_set: str = ""
+        update_dict: dict[str, Any] = {'competition_id': competition_id, 'author_user_id': token.id}
+        if competition.name is not None and competition.name != '':
+            update_set += "name = %(name)s, "
+            update_dict['name'] = competition.name
+        if competition.description is not None and competition.description != '':
+            update_set += "description = %(description)s, "
+            update_dict['description'] = competition.description
+        if competition.start_time is not None and competition.start_time != '':
+            if convert_and_validate_datetime(competition.start_time) > datetime.now():
+                raise HTTPException(status_code=400, detail="Start time is in the past")
+            update_set += "start_time = %(start_time)s, "
+            update_dict['start_time'] = competition.start_time
+        if competition.end_time is not None and competition.end_time != '':
+            if (not past_times and convert_and_validate_datetime(competition.end_time) < datetime.now()):
+                raise HTTPException(status_code=400, detail="End time is in the past")
+            if competition.start_time is not None and competition.start_time != '' and convert_and_validate_datetime(competition.start_time) > convert_and_validate_datetime(competition.end_time):
+                raise HTTPException(status_code=400, detail="Start time is after end time")
+            cursor.execute("SELECT start_time FROM competitions WHERE id = %(competition_id)s LIMIT 1", {'competition_id': competition_id})
+            competition_db: Any = cursor.fetchone()
+            if competition_db is None:
+                raise HTTPException(status_code=400, detail="Competition does not exist")
+            if convert_and_validate_datetime(competition.end_time) < convert_and_validate_datetime(competition_db['start_time']):
+                raise HTTPException(status_code=400, detail="End time is before start time")
+            update_set += "end_time = %(end_time)s, "
+            update_dict['end_time'] = competition.end_time
+        if competition.maximum_team_members_number is not None and competition.maximum_team_members_number > 0:
+            update_set += "maximum_team_members_number = %(maximum_team_members_number)s, "
+            update_dict['maximum_team_members_number'] = competition.maximum_team_members_number
+        if update_set == "":
+            return JSONResponse({})
+        if not check_if_competition_can_be_edited(cursor, competition_id, authorization):
+            raise HTTPException(status_code=403, detail="This competition cannot be edited or deleted")
+        cursor.execute("UPDATE competitions SET " + update_set[:-2] + " WHERE id = %(competition_id)s AND author_user_id = %(author_user_id)s", update_dict)
+        if cursor.rowcount == 0:
+            detect_error_competitions(cursor, competition_id, token.id, False, False, True)
+    return JSONResponse({})
+
+@app.delete("/competitions/{competition_id}")
+def delete_competition(competition_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        if not check_if_competition_can_be_edited(cursor, competition_id, authorization):
+            raise HTTPException(status_code=403, detail="This competition cannot be edited or deleted")
+        cursor.execute("DELETE FROM competitions WHERE id = %(competition_id)s AND author_user_id = %(author_user_id)s", {'competition_id': competition_id, 'author_user_id': token.id})
+        if cursor.rowcount == 0:
+            detect_error_competitions(cursor, competition_id, token.id, False, False, False)
+    return JSONResponse({})
