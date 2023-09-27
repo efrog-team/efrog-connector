@@ -88,8 +88,8 @@ CREATE TABLE competition_problems (
 CREATE TABLE test_cases (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     problem_id BIGINT UNSIGNED NOT NULL,
-    input TEXT NOT NULL,
-    solution TEXT NOT NULL,
+    input MEDIUMTEXT NOT NULL,
+    solution MEDIUMTEXT NOT NULL,
     score INT UNSIGNED NOT NULL,
     opened BOOLEAN NOT NULL,
     PRIMARY KEY (id),
