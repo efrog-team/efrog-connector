@@ -55,10 +55,14 @@ CREATE TABLE competition_participants (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     competition_id BIGINT UNSIGNED NOT NULL,
     team_id BIGINT UNSIGNED NOT NULL,
-    confirmed BOOLEAN NOT NULL,
+    author_confirmed BOOLEAN NOT NULL,
+    author_declined BOOLEAN NOT NULL,
+    participant_confirmed BOOLEAN NOT NULL,
+    participant_declined BOOLEAN NOT NULL,
     PRIMARY KEY (id),
     FOREIGN KEY (competition_id) REFERENCES competitions(id),
-    FOREIGN KEY (team_id) REFERENCES teams(id)
+    FOREIGN KEY (team_id) REFERENCES teams(id),
+    UNIQUE KEY (competition_id, team_id)
 );
 
 CREATE TABLE problems (

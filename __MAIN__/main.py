@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Header, WebSocket
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from models import UserRequest, UserToken, UserRequestUpdate, UserVerifyEmail, UserResetPassword, TeamRequest, TeamRequestUpdate, TeamMemberRequest, ProblemRequest, ProblemRequestUpdate, TestCaseRequest, TestCaseRequestUpdate, SubmissionRequest, DebugRequest, DebugRequestMany, CompetitionRequest, CompetitionRequestUpdate
+from models import UserRequest, UserToken, UserRequestUpdate, UserVerifyEmail, UserResetPassword, TeamRequest, TeamRequestUpdate, TeamMemberRequest, ProblemRequest, ProblemRequestUpdate, TestCaseRequest, TestCaseRequestUpdate, SubmissionRequest, DebugRequest, DebugRequestMany, CompetitionRequest, CompetitionRequestUpdate, CompetitionParticipantRequest, ActivateOrDeactivate, CoachOrContestant, ConfirmOrDecline, PrivateOrPublic, OpenedOrClosed, IndividualsOrTeams
 from mysql.connector.abstracts import MySQLCursorAbstract
 from mysql.connector.errors import IntegrityError
 from config import email_config, database_config
@@ -332,22 +332,12 @@ def get_teams(username: str, only_owned: bool = False, only_unowned: bool = Fals
             'teams': teams
         })
 
-@app.put("/teams/{team_name}/activate")
-def put_activate_team(team_name: str, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+@app.put("/teams/{team_name}/{activate_or_deactivate}")
+def put_activate_team(team_name: str, activate_or_deactivate: ActivateOrDeactivate, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
-        cursor.execute("UPDATE teams SET active = 1 WHERE name = BINARY %(name)s AND owner_user_id = %(owner_user_id)s AND individual = 0", {'name': team_name, 'owner_user_id': token.id})
-        if cursor.rowcount == 0:
-            detect_error_teams(cursor, team_name, token.id, False, True)
-    return JSONResponse({})
-
-@app.put("/teams/{team_name}/deactivate")
-def put_deactivate_team(team_name: str, authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    token: Token = decode_token(authorization)
-    cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
-        cursor.execute("UPDATE teams SET active = 0 WHERE name = BINARY %(name)s AND owner_user_id = %(owner_user_id)s AND individual = 0", {'name': team_name, 'owner_user_id': token.id})
+        cursor.execute("UPDATE teams SET active = %(activate_or_deactivate)s WHERE name = BINARY %(name)s AND owner_user_id = %(owner_user_id)s AND individual = 0", {'name': team_name, 'owner_user_id': token.id, 'activate_or_deactivate': activate_or_deactivate is ActivateOrDeactivate.activate})
         if cursor.rowcount == 0:
             detect_error_teams(cursor, team_name, token.id, False, True)
     return JSONResponse({})
@@ -500,8 +490,8 @@ def get_team_member(team_name: str, member_username: str) -> JSONResponse:
             raise HTTPException(status_code=404, detail="This user is not in the team")
         return JSONResponse(team_member)
 
-@app.put("/teams/{team_name}/members/{member_username}/make-coach")
-def put_make_team_member_coach(team_name: str, member_username: str, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+@app.put("/teams/{team_name}/members/{member_username}/make-{coach_or_contestant}")
+def put_team_member_make_coach_or_contestant(team_name: str, member_username: str, coach_or_contestant: CoachOrContestant, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
@@ -509,31 +499,15 @@ def put_make_team_member_coach(team_name: str, member_username: str, authorizati
             UPDATE team_members
             INNER JOIN users ON team_members.member_user_id = users.id
             INNER JOIN teams ON team_members.team_id = teams.id
-            SET team_members.coach = 1
+            SET team_members.coach = %(coach_or_contestant)s
             WHERE teams.name = BINARY %(team_name)s AND teams.individual = 0 AND teams.owner_user_id = %(owner_user_id)s AND users.username = %(member_username)s
-        """, {'team_name': team_name, 'owner_user_id': token.id, 'member_username': member_username})
+        """, {'team_name': team_name, 'owner_user_id': token.id, 'member_username': member_username, 'coach_or_contestant': coach_or_contestant is CoachOrContestant.coach})
         if cursor.rowcount == 0:
             detect_error_team_members(cursor, team_name, token.id, member_username, False, True)
     return JSONResponse({})
 
-@app.put("/teams/{team_name}/members/{member_username}/make-contestant")
-def put_make_team_member_contestant(team_name: str, member_username: str, authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    token: Token = decode_token(authorization)
-    cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
-        cursor.execute("""
-            UPDATE team_members
-            INNER JOIN users ON team_members.member_user_id = users.id
-            INNER JOIN teams ON team_members.team_id = teams.id
-            SET team_members.coach = 0
-            WHERE teams.name = BINARY %(team_name)s AND teams.individual = 0 AND teams.owner_user_id = %(owner_user_id)s AND users.username = BINARY %(member_username)s
-        """, {'team_name': team_name, 'owner_user_id': token.id, 'member_username': member_username})
-        if cursor.rowcount == 0:
-            detect_error_team_members(cursor, team_name, token.id, member_username, False, True)
-    return JSONResponse({})
-
-@app.put("/teams/{team_name}/members/{member_username}/confirm")
-def put_confirm_team_member(team_name: str, member_username: str, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+@app.put("/teams/{team_name}/members/{member_username}/{confirm_or_decline}")
+def put_team_member_confirm_or_decline(team_name: str, member_username: str, confirm_or_decline: ConfirmOrDecline, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     token: Token = decode_token(authorization)
     if token.username != member_username:
         raise HTTPException(status_code=403, detail="You are trying to change not your membership")
@@ -544,30 +518,10 @@ def put_confirm_team_member(team_name: str, member_username: str, authorization:
             INNER JOIN users ON team_members.member_user_id = users.id
             INNER JOIN teams ON team_members.team_id = teams.id
             SET 
-                team_members.confirmed = 1,
-                team_members.declined = 0
+                team_members.confirmed = %(confirmed)s,
+                team_members.declined = %(declined)s
             WHERE teams.name = BINARY %(team_name)s AND teams.individual = 0 AND users.username = BINARY %(member_username)s
-        """, {'team_name': team_name, 'member_username': member_username})
-        if cursor.rowcount == 0:
-            detect_error_team_members(cursor, team_name, -1, member_username, True, True)
-    return JSONResponse({})
-
-@app.put("/teams/{team_name}/members/{member_username}/decline")
-def put_decline_team_member(team_name: str, member_username: str, authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    token: Token = decode_token(authorization)
-    if token.username != member_username:
-        raise HTTPException(status_code=403, detail="You are trying to change not your membership")
-    cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
-        cursor.execute("""
-            UPDATE team_members
-            INNER JOIN users ON team_members.member_user_id = users.id
-            INNER JOIN teams ON team_members.team_id = teams.id
-            SET 
-                team_members.confirmed = 0,
-                team_members.declined = 1
-            WHERE teams.name = BINARY %(team_name)s AND teams.individual = 0 AND users.username = BINARY %(member_username)s
-        """, {'team_name': team_name, 'member_username': member_username})
+        """, {'team_name': team_name, 'member_username': member_username, 'confirmed': confirm_or_decline is ConfirmOrDecline.confirm, 'declined': confirm_or_decline is ConfirmOrDecline.decline})
         if cursor.rowcount == 0:
             detect_error_team_members(cursor, team_name, -1, member_username, True, True)
     return JSONResponse({})
@@ -717,30 +671,16 @@ def get_problems_users(username: str, authorization: Annotated[str | None, Heade
             'problems': problems
         })
 
-@app.put("/problems/{problem_id}/make-public")
-def put_make_problem_public(problem_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+@app.put("/problems/{problem_id}/make-{private_or_public}")
+def put_problem_make_private_or_public(problem_id: int, private_or_public: PrivateOrPublic, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
         cursor.execute("""
             UPDATE problems
-            SET private = 0
+            SET private = %(private_or_public)s
             WHERE id = %(problem_id)s AND author_user_id = %(author_user_id)s
-        """, {'problem_id': problem_id, 'author_user_id': token.id})
-        if cursor.rowcount == 0:
-            detect_error_problems(cursor, problem_id, token.id, False, False, True)
-    return JSONResponse({})
-
-@app.put("/problems/{problem_id}/make-private")
-def put_make_problem_private(problem_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    token: Token = decode_token(authorization)
-    cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
-        cursor.execute("""
-            UPDATE problems
-            SET private = 1
-            WHERE id = %(problem_id)s AND author_user_id = %(author_user_id)s
-        """, {'problem_id': problem_id, 'author_user_id': token.id})
+        """, {'problem_id': problem_id, 'author_user_id': token.id, 'private_or_public': private_or_public is PrivateOrPublic.private})
         if cursor.rowcount == 0:
             detect_error_problems(cursor, problem_id, token.id, False, False, True)
     return JSONResponse({})
@@ -927,8 +867,8 @@ def get_problem_full(problem_id: int, authorization: Annotated[str | None, Heade
         problem['test_cases'] = list(cursor.fetchall())
         return JSONResponse(problem)
 
-@app.put("/problems/{problem_id}/test-cases/{test_case_id}/make-opened")
-def put_make_test_case_opened(problem_id: int, test_case_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+@app.put("/problems/{problem_id}/test-cases/{test_case_id}/make-{opened_or_closed}")
+def put_test_case_make_opened_or_closed(problem_id: int, test_case_id: int, opened_or_closed: OpenedOrClosed, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
@@ -937,26 +877,9 @@ def put_make_test_case_opened(problem_id: int, test_case_id: int, authorization:
         cursor.execute("""
             UPDATE test_cases
             INNER JOIN problems ON test_cases.problem_id = problems.id
-            SET test_cases.opened = 1
+            SET test_cases.opened = %(opened_or_closed)s
             WHERE test_cases.id = %(test_case_id)s AND test_cases.problem_id = %(problem_id)s AND problems.author_user_id = %(author_user_id)s
-        """, {'test_case_id': test_case_id, 'problem_id': problem_id, 'author_user_id': token.id})
-        if cursor.rowcount == 0:
-            detect_error_problems(cursor, problem_id, token.id, False, False, True)
-    return JSONResponse({})
-
-@app.put("/problems/{problem_id}/test-cases/{test_case_id}/make-closed")
-def put_make_test_case_closed(problem_id: int, test_case_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    token: Token = decode_token(authorization)
-    cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
-        if not check_if_problem_can_be_edited(cursor, problem_id, authorization):
-            raise HTTPException(status_code=403, detail="This problem cannot be edited or deleted")
-        cursor.execute("""
-            UPDATE test_cases
-            INNER JOIN problems ON test_cases.problem_id = problems.id
-            SET test_cases.opened = 0
-            WHERE test_cases.id = %(test_case_id)s AND test_cases.problem_id = %(problem_id)s AND problems.author_user_id = %(author_user_id)s
-        """, {'test_case_id': test_case_id, 'problem_id': problem_id, 'author_user_id': token.id})
+        """, {'test_case_id': test_case_id, 'problem_id': problem_id, 'author_user_id': token.id, 'opened_or_closed': opened_or_closed is OpenedOrClosed.opened})
         if cursor.rowcount == 0:
             detect_error_problems(cursor, problem_id, token.id, False, False, True)
     return JSONResponse({})
@@ -1501,6 +1424,9 @@ def get_competition(competition_id: int, authorization: Annotated[str | None, He
                 competitions.description AS description,
                 competitions.start_time AS start_time,
                 competitions.end_time AS end_time,
+                IF(NOW() BETWEEN competitions.start_time AND competitions.end_time, 
+                    "ongoing", 
+                    IF(NOW() < competitions.start_time, "unstarted", "ended")) AS status,
                 competitions.private AS private,
                 competitions.maximum_team_members_number AS maximum_team_members_number
             FROM competitions
@@ -1535,30 +1461,16 @@ def detect_error_competitions(cursor: MySQLCursorAbstract, competition_id: int, 
     if not ignore_internal_server_error:
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
-@app.put("/competitions/{competition_id}/make-public")
-def put_make_competition_public(competition_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+@app.put("/competitions/{competition_id}/make-{private_or_public}")
+def put_competition_make_private_or_public(competition_id: int, private_or_public: PrivateOrPublic, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
         cursor.execute("""
             UPDATE competitions
-            SET private = 0
+            SET private = %(private_or_public)s
             WHERE id = %(competition_id)s AND author_user_id = %(author_user_id)s
-        """, {'competition_id': competition_id, 'author_user_id': token.id})
-        if cursor.rowcount == 0:
-            detect_error_competitions(cursor, competition_id, token.id, False, False, True)
-    return JSONResponse({})
-
-@app.put("/competitions/{competition_id}/make-private")
-def put_make_competition_private(competition_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    token: Token = decode_token(authorization)
-    cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
-        cursor.execute("""
-            UPDATE competitions
-            SET private = 1
-            WHERE id = %(competition_id)s AND author_user_id = %(author_user_id)s
-        """, {'competition_id': competition_id, 'author_user_id': token.id})
+        """, {'competition_id': competition_id, 'author_user_id': token.id, 'private_or_public': private_or_public is PrivateOrPublic.private})
         if cursor.rowcount == 0:
             detect_error_competitions(cursor, competition_id, token.id, False, False, True)
     return JSONResponse({})
@@ -1571,9 +1483,9 @@ def check_if_competition_can_be_edited(cursor: MySQLCursorAbstract, competition_
     if competition['private']:
         token: Token = decode_token(authorization)
         if token.id != competition['author_user_id']:
-            raise HTTPException(status_code=403, detail="You are not the author of the competition")
+            raise HTTPException(status_code=403, detail="You are not the author of this private competition")
     cursor.execute("SELECT 1 FROM competitions WHERE id = %(id)s AND end_time > NOW() LIMIT 1", {'id': competition_id})
-    return len(cursor.fetchall()) == 0
+    return cursor.fetchone() is not None
 
 @app.get("/competitions/{competition_id}/check-if-can-be-edited")
 def get_check_if_competition_can_be_edited(competition_id: int, authorization: Annotated[str | None, Header()] = None) -> JSONResponse:
@@ -1633,7 +1545,168 @@ def delete_competition(competition_id: int, authorization: Annotated[str | None,
     with ConnectionCursor(database_config) as cursor:
         if not check_if_competition_can_be_edited(cursor, competition_id, authorization):
             raise HTTPException(status_code=403, detail="This competition cannot be edited or deleted")
-        cursor.execute("DELETE FROM competitions WHERE id = %(competition_id)s AND author_user_id = %(author_user_id)s", {'competition_id': competition_id, 'author_user_id': token.id})
+        cursor.execute("DELETE competitions FROM competitions WHERE id = %(competition_id)s AND author_user_id = %(author_user_id)s", {'competition_id': competition_id, 'author_user_id': token.id})
         if cursor.rowcount == 0:
             detect_error_competitions(cursor, competition_id, token.id, False, False, False)
+    return JSONResponse({})
+
+@app.post("/competitions/{competition_id}/participants")
+def post_competition_participant(competition_id: int, participant: CompetitionParticipantRequest, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+    token: Token = decode_token(authorization)
+    if participant.username_or_team_name == "":
+        raise HTTPException(status_code=400, detail="Username or team name is empty")
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        if not check_if_competition_can_be_edited(cursor, competition_id, authorization):
+            raise HTTPException(status_code=403, detail="This competition cannot be edited or deleted and participants cannot be added")
+        author_confirmed: bool = False
+        participant_confirmed: bool = False
+        user_or_team_id: int = -1
+        cursor.execute("SELECT author_user_id, private, maximum_team_members_number FROM competitions WHERE id = %(id)s LIMIT 1", {'id': competition_id})
+        competition: Any = cursor.fetchone()
+        if competition['author_user_id'] == token.id:
+            author_confirmed = True
+        cursor.execute("SELECT id, owner_user_id FROM teams WHERE name = BINARY %(name)s AND individual = %(individual)s LIMIT 1", {'name': participant.username_or_team_name, 'individual': participant.individual})
+        team: Any = cursor.fetchone()
+        if team is None:
+            raise HTTPException(status_code=404, detail="User or team does not exist")
+        user_or_team_id = team['id']
+        if team['owner_user_id'] == token.id:
+            participant_confirmed = True
+        if (not author_confirmed) and (not participant_confirmed):
+            raise HTTPException(status_code=403, detail="You are neither competition author nor team owner nor user whom you are trying to add")
+        cursor.execute("""
+            SELECT COUNT(1) AS team_members_number
+            FROM team_members
+            WHERE team_id = %(team_id)s
+        """, {'team_id': user_or_team_id})
+        counter: Any = cursor.fetchone()
+        if counter['team_members_number'] > competition['maximum_team_members_number']:
+            raise HTTPException(status_code=409, detail="There are more team members than allowed")
+        try:
+            cursor.execute("INSERT INTO competition_participants (competition_id, team_id, author_confirmed, author_declined, participant_confirmed, participant_declined) VALUES (%(competition_id)s, %(team_id)s, %(author_confirmed)s, 0, %(participant_confirmed)s, 0)", {'competition_id': competition_id, 'team_id': user_or_team_id, 'author_confirmed': author_confirmed, 'participant_confirmed': participant_confirmed})
+        except IntegrityError:
+            raise HTTPException(status_code=409, detail="This user or team is already a participant of this competition")
+    return JSONResponse({})
+
+@app.get("/competitions/{competition_id}/participants")
+def get_competition_participants(competition_id: int, authorization: Annotated[str | None, Header()] = None, only_author_confirmed: bool = False, only_author_unconfirmed: bool = False, only_author_declined: bool = False, only_author_undeclined: bool = False, only_participant_confirmed: bool = False, only_team_unconfirmed: bool = False, only_participant_declined: bool = False, only_team_undeclined: bool = False, only_individuals: bool = False, only_teams: bool = False) -> JSONResponse:
+    filter_conditions: str = ""
+    if only_author_confirmed:
+        filter_conditions += " AND competition_participants.author_confirmed = 1"
+    if only_author_unconfirmed:
+        filter_conditions += " AND competition_participants.author_confirmed = 0"
+    if only_author_declined:
+        filter_conditions += " AND competition_participants.author_declined = 1"
+    if only_author_undeclined:
+        filter_conditions += " AND competition_participants.author_declined = 0"
+    if only_participant_confirmed:
+        filter_conditions += " AND competition_participants.participant_confirmed = 1"
+    if only_team_unconfirmed:
+        filter_conditions += " AND competition_participants.participant_confirmed = 0"
+    if only_participant_declined:
+        filter_conditions += " AND competition_participants.participant_declined = 1"
+    if only_team_undeclined:
+        filter_conditions += " AND competition_participants.participant_declined = 0"
+    if only_individuals:
+        filter_conditions += " AND teams.individual = 1"
+    if only_teams:
+        filter_conditions += " AND teams.individual = 0"
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("SELECT author_user_id, private FROM competitions WHERE id = %(competition_id)s LIMIT 1", {'competition_id': competition_id})
+        competition: Any = cursor.fetchone()
+        if competition is None:
+            raise HTTPException(status_code=404, detail="Competition does not exist")
+        if competition['private']:
+            token: Token = decode_token(authorization)
+            if authorization is None or token.id != competition['author_user_id']:
+                cursor.execute("""
+                    SELECT 1
+                    FROM team_members
+                    INNER JOIN competition_participants ON team_members.team_id = competition_participants.team_id
+                    WHERE competition_participants.competition_id = %(id)s AND team_members.member_user_id = %(user_id)s
+                    LIMIT 1
+                """, {'id': competition_id, 'user_id': token.id})
+                if cursor.fetchone() is None:
+                    raise HTTPException(status_code=403, detail="You do not have permission to view this competition")
+        cursor.execute("""
+            SELECT
+                competition_participants.competition_id AS competition_id,
+                teams.name AS username_or_team_name,
+                teams.individual AS individual,
+                competition_participants.author_confirmed AS author_confirmed,
+                competition_participants.author_declined AS author_declined,
+                competition_participants.participant_confirmed AS participant_confirmed,
+                competition_participants.participant_declined AS participant_declined
+            FROM competition_participants
+            INNER JOIN teams ON competition_participants.team_id = teams.id
+            WHERE competition_participants.competition_id = %(competition_id)s
+        """ + filter_conditions, {'competition_id': competition_id})
+        return JSONResponse({
+            'participants': list(cursor.fetchall())
+        })
+
+@app.put("/competitions/{competition_id}/participants/{individuals_or_teams}/{username_or_team_name}/{confirm_or_decline}")
+def put_competition_participant_confirm_or_decline(competition_id: int, individuals_or_teams: IndividualsOrTeams, username_or_team_name: str, confirm_or_decline: ConfirmOrDecline, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        update_set: str = ""
+        cursor.execute("SELECT author_user_id FROM competitions WHERE id = %(competition_id)s LIMIT 1", {'competition_id': competition_id})
+        competition: Any = cursor.fetchone()
+        if competition is None:
+            raise HTTPException(status_code=404, detail="Competition does not exist")
+        if competition['author_user_id'] == token.id:
+            if confirm_or_decline is ConfirmOrDecline.confirm:
+                update_set += "author_confirmed = 1, "
+                update_set += "author_declined = 0, "
+            else:
+                update_set += "author_confirmed = 0, "
+                update_set += "author_declined = 1, "
+        cursor.execute("SELECT id, owner_user_id FROM teams WHERE name = BINARY %(name)s AND individual = %(individual)s LIMIT 1", {'name': username_or_team_name, 'individual': individuals_or_teams is IndividualsOrTeams.individuals})
+        team: Any = cursor.fetchone()
+        if team is None:
+            raise HTTPException(status_code=404, detail="User or team does not exist")
+        if team['owner_user_id'] == token.id:
+            if confirm_or_decline is ConfirmOrDecline.confirm:
+                update_set += "participant_confirmed = 1, "
+                update_set += "participant_declined = 0, "
+            else:
+                update_set += "participant_confirmed = 0, "
+                update_set += "participant_declined = 1, "
+        cursor.execute("UPDATE competition_participants SET " + update_set[:-2] + " WHERE competition_id = %(competition_id)s AND team_id = %(team_id)s", {'competition_id': competition_id, 'team_id': team['id']})
+        if cursor.rowcount == 0:
+            cursor.execute("SELECT id FROM competition_participants WHERE competition_id = %(competition_id)s AND team_id = %(team_id)s", {'competition_id': competition_id, 'team_id': team['id']})
+            if cursor.fetchone() is None:
+                raise HTTPException(status_code=404, detail="User or team is not a participant of this competition")
+    return JSONResponse({})
+
+@app.delete("/competitions/{competition_id}/participants/{individuals_or_teams}/{username_or_team_name}")
+def delete_competition_participant(competition_id: int, individuals_or_teams: IndividualsOrTeams, username_or_team_name: str, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("""
+            DELETE competition_participants
+            FROM competition_participants
+            INNER JOIN competitions ON competition_participants.competition_id = competitions.id
+            INNER JOIN teams ON competition_participants.team_id = teams.id
+            WHERE competition_participants.competition_id = %(competition_id)s AND competitions.author_user_id = %(author_user_id)s AND teams.name = BINARY %(team_name)s AND teams.individual = %(individual)s
+        """, {'competition_id': competition_id, 'author_user_id': token.id, 'team_name': username_or_team_name, 'individual': individuals_or_teams is IndividualsOrTeams.individuals})
+        if cursor.rowcount == 0:
+            cursor.execute("SELECT author_user_id FROM competitions WHERE id = %(competition_id)s LIMIT 1", {'competition_id': competition_id})
+            competition: Any = cursor.fetchone()
+            if competition is None:
+                raise HTTPException(status_code=404, detail="Competition does not exist")
+            if competition['author_user_id'] != token.id:
+                raise HTTPException(status_code=403, detail="You are not the author of this competition")
+            cursor.execute("SELECT id FROM teams WHERE name = BINARY %(name)s AND individual = %(individual)s LIMIT 1", {'name': username_or_team_name, 'individual': individuals_or_teams is IndividualsOrTeams.individuals})
+            team: Any = cursor.fetchone()
+            if team is None:
+                raise HTTPException(status_code=404, detail="User or team does not exist")
+            cursor.execute("SELECT id FROM competition_participants WHERE competition_id = %(competition_id)s AND team_id = %(team_id)s", {'competition_id': competition_id, 'team_id': team['id']})
+            if cursor.fetchone() is None:
+                raise HTTPException(status_code=404, detail="User or team is not a participant of this competition")
+            raise HTTPException(status_code=500, detail="Internal Server Error")
     return JSONResponse({})

@@ -87,7 +87,7 @@ Feature: Problems
     Scenario: Get problems
         When makes GET request /problems
         Then gets status 200
-        And problems length is 2
+        And problems length is 3
 
     Scenario: Get users problems that you are not an author
         Given username and password of another user

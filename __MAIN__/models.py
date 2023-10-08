@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from enum import Enum
 
 class UserRequest(BaseModel):
     username: str
@@ -94,3 +95,31 @@ class CompetitionRequestUpdate(BaseModel):
     start_time: str | None
     end_time: str | None
     maximum_team_members_number: int | None
+
+class CompetitionParticipantRequest(BaseModel):
+    username_or_team_name: str
+    individual: bool
+
+class ActivateOrDeactivate(str, Enum):
+    activate = "activate"
+    deactivate = "deactivate"
+
+class CoachOrContestant(str, Enum):
+    coach = "coach"
+    contestant = "contestant"
+
+class ConfirmOrDecline(str, Enum):
+    confirm = "confirm"
+    decline = "decline"
+
+class PrivateOrPublic(str, Enum):
+    private = "private"
+    public = "public"
+
+class OpenedOrClosed(str, Enum):
+    opened = "opened"
+    closed = "closed"
+
+class IndividualsOrTeams(str, Enum):
+    individuals = "individuals"
+    teams = "teams"

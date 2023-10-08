@@ -57,6 +57,10 @@ def rename_field(data: dict[str, str | int | bool], field: str, name: str) -> No
     data[name] = data[field]
     del data[field]
 
+@given(parsers.parse("a field {field} is set to {value}"))
+def set_to(data: dict[str, str | int | bool], field: str, value: str) -> None:
+    data[field] = eval(value)
+
 @given("put into params")
 def put_into_params(data: dict[str, str | int | bool], params: dict[str, str | int | bool]) -> None:
     for key, value in data.items():
@@ -201,7 +205,7 @@ def problem(fields: str, name: str, names_convert: dict[str, str], data: dict[st
         fields_list = fields.replace(" and ", ", ").split(", ")
     if name == "the correct public":
         if 'id' in fields_list:
-            data['id'] = 2
+            data['id'] = 3
         if 'name' in fields_list:
             data['name'] = 'Hello World! Public'
         if 'statement' in fields_list:
@@ -220,7 +224,7 @@ def problem(fields: str, name: str, names_convert: dict[str, str], data: dict[st
             data['private'] = 0
     elif name == "the correct private":
         if 'id' in fields_list:
-            data['id'] = 3
+            data['id'] = 4
         if 'name' in fields_list:
             data['name'] = 'Hello World! Private'
         if 'statement' in fields_list:
@@ -239,7 +243,7 @@ def problem(fields: str, name: str, names_convert: dict[str, str], data: dict[st
             data['private'] = 1
     else:
         if 'id' in fields_list:
-            data['id'] = 4
+            data['id'] = 5
         if 'name' in fields_list:
             data['name'] = names_convert[name]
         if 'statement' in fields_list:
@@ -259,7 +263,7 @@ def problem(fields: str, name: str, names_convert: dict[str, str], data: dict[st
 
 @then(parsers.parse("add {name} problem to the database"))
 def problem_in_database(name: str, names_convert: dict[str, str]) -> None:
-    if name == "the correct public" and client.get('/problems/2').status_code == 404:
+    if name == "the correct public" and client.get('/problems/3').status_code == 404:
         client.post('/problems', json={
             'name': 'Hello World! Public',
             'statement': 'Print Hello World!',
@@ -275,7 +279,7 @@ def problem_in_database(name: str, names_convert: dict[str, str]) -> None:
                 'password': "correct"
             }).json()['token']
         })
-    elif name == "the correct private" and client.get('/problems/3', headers={
+    elif name == "the correct private" and client.get('/problems/4', headers={
             'Authorization': client.post('/token', json={
                 'username': "correct",
                 'password': "correct"
@@ -296,7 +300,7 @@ def problem_in_database(name: str, names_convert: dict[str, str]) -> None:
                 'password': "correct"
             }).json()['token']
         })
-    elif client.get('/problems/4').status_code == 404:
+    elif client.get('/problems/5').status_code == 404:
         client.post('/problems', json={
             'name': names_convert[name],
             'statement': names_convert[name] + ' statement',
@@ -324,7 +328,7 @@ def test_case(fields: str, name: str, names_convert: dict[str, str], data: dict[
         fields_list = fields.replace(" and ", ", ").split(", ")
     if name == "the correct opened":
         if 'id' in fields_list:
-            data['id'] = 7
+            data['id'] = 8
         if 'input' in fields_list:
             data['input'] = ''
         if 'solution' in fields_list:
@@ -335,7 +339,7 @@ def test_case(fields: str, name: str, names_convert: dict[str, str], data: dict[
             data['opened'] = 1
     elif name == "the correct closed":
         if 'id' in fields_list:
-            data['id'] = 8
+            data['id'] = 9
         if 'input' in fields_list:
             data['input'] = ''
         if 'solution' in fields_list:
@@ -346,7 +350,7 @@ def test_case(fields: str, name: str, names_convert: dict[str, str], data: dict[
             data['opened'] = 0
     else:
         if 'id' in fields_list:
-            data['id'] = 9
+            data['id'] = 10
         if 'input' in fields_list:
             data['input'] = names_convert[name]
         if 'solution' in fields_list:
@@ -368,7 +372,7 @@ def submission(fields: str, name: str, names_convert: dict[str, str], data: dict
         if 'id' in fields_list:
             data['id'] = 1
         if 'problem_id' in fields_list:
-            data['problem_id'] = 2
+            data['problem_id'] = 3
         if 'code' in fields_list:
             data['code'] = 'print("Hello World!")'
         if 'language_name' in fields_list:
@@ -379,7 +383,7 @@ def submission(fields: str, name: str, names_convert: dict[str, str], data: dict
         if 'id' in fields_list:
             data['id'] = 2
         if 'problem_id' in fields_list:
-            data['problem_id'] = 2
+            data['problem_id'] = 3
         if 'code' in fields_list:
             data['code'] = names_convert[name]
         if 'language_name' in fields_list:
@@ -406,7 +410,7 @@ def competition(fields: str, name: str, names_convert: dict[str, str], data: dic
         if 'start_time' in fields_list:
             data['start_time'] = '2022-01-01 00:00:00'
         if 'end_time' in fields_list:
-            data['end_time'] = '2023-01-01 00:00:00'
+            data['end_time'] = '2024-01-01 00:00:00'
         if 'private' in fields_list:
             data['private'] = 0
         if 'maximum_team_members_number' in fields_list:
@@ -421,7 +425,7 @@ def competition(fields: str, name: str, names_convert: dict[str, str], data: dic
         if 'start_time' in fields_list:
             data['start_time'] = '2022-01-01 00:00:00'
         if 'end_time' in fields_list:
-            data['end_time'] = '2023-01-01 00:00:00'
+            data['end_time'] = '2024-01-01 00:00:00'
         if 'private' in fields_list:
             data['private'] = 1
         if 'maximum_team_members_number' in fields_list:
@@ -449,7 +453,7 @@ def competition_in_database(name: str, names_convert: dict[str, str]) -> None:
             'name': 'The first public competition',
             'description': 'The first public competition',
             'start_time': '2022-01-01 00:00:00',
-            'end_time': '2023-01-01 00:00:00',
+            'end_time': '2024-01-01 00:00:00',
             'private': 0,
             'maximum_team_members_number': 3
         }, headers={
@@ -468,7 +472,7 @@ def competition_in_database(name: str, names_convert: dict[str, str]) -> None:
             'name': 'The first private competition',
             'description': 'The first private competition',
             'start_time': '2022-01-01 00:00:00',
-            'end_time': '2023-01-01 00:00:00',
+            'end_time': '2024-01-01 00:00:00',
             'private': 1,
             'maximum_team_members_number': 3
         }, headers={

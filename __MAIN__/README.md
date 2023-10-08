@@ -806,6 +806,7 @@
         * description: string
         * start_time: string (in the form of datetime %Y-%m-%d %H:%M:%S)
         * end_time: string (in the form of datetime %Y-%m-%d %H:%M:%S)
+        * status: string (unstarted, ongoing or ended)
         * private: boolean
         * maximum_team_members_number: integer
 
@@ -858,6 +859,111 @@
         * Authroization: string (access token)
     * Request parameters:
         * competition_id: integer
+    * Request body:
+        * empty
+    * Response body:
+        * empty
+
+* ### POST "/competitions/{competition_id}" — create a competition participant
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * competition_id: integer
+    * Request body:
+        * username_or_team_name: string
+        * individual: boolean
+    * Response body:
+        * empty
+
+* ### GET "/competitions/{competition_id}/participants?only_author_confirmed={only_author_confirmed}&only_author_unconfirmed={only_author_unconfirmed}&only_author_declined={only_author_declined}&only_author_undeclined={only_author_undeclined}&only_participant_confirmed={only_participant_confirmed}&only_participant_unconfirmed={only_participant_unconfirmed}&only_participant_declined={only_participant_declined}&only_participant_undeclined={only_participant_undeclined}&only_individuals={only_individuals}&only_teams={only_teams}" — get competition participants
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * competition_id: integer
+        * only_author_confirmed: boolean
+        * only_author_unconfirmed: boolean
+        * only_author_declined: boolean
+        * only_author_undeclined: boolean
+        * only_participant_confirmed: boolean
+        * only_participant_unconfirmed: boolean
+        * only_participant_declined: boolean
+        * only_participant_undeclined: boolean
+        * only_individuals: boolean
+        * only_teams: boolean
+    * Request body:
+        * empty
+    * Response body:
+        * participants: array[ {
+            * competition_id: integer
+            * username_or_team_name: string
+            * individual: boolean
+            * author_confirmed: boolean
+            * author_declined: boolean
+            * participant_confirmed: boolean,
+            * participant_declined: boolean
+        } ]
+
+* ### PUT "/competitions/{competition_id}/participants/individuals/{username}/confirm" — confirm an individual participant
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * competition_id: integer
+        * username: string
+    * Request body:
+        * empty
+    * Response body:
+        * empty
+
+* ### PUT "/competitions/{competition_id}/participants/individuals/{username}/decline" — decline an individual participant
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * competition_id: integer
+        * username: string
+    * Request body:
+        * empty
+    * Response body:
+        * empty
+
+* ### PUT "/competitions/{competition_id}/participants/teams/{team_name}/confirm" — confirm a team participant
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * competition_id: integer
+        * team_name: string
+    * Request body:
+        * empty
+    * Response body:
+        * empty
+
+* ### PUT "/competitions/{competition_id}/participants/teams/{team_name}/decline" — decline a team participant
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * competition_id: integer
+        * team_name: string
+    * Request body:
+        * empty
+    * Response body:
+        * empty
+
+* ### DELETE "/competitions/{competition_id}/participants/individuals/{username}" — delete an individual participant
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * competition_id: integer
+        * username: string
+    * Request body:
+        * empty
+    * Response body:
+        * empty
+
+* ### DELETE "/competitions/{competition_id}/participants/teams/{team_name}" — delete a team participant
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * competition_id: integer
+        * team_name: string
     * Request body:
         * empty
     * Response body:
