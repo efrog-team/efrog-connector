@@ -82,11 +82,12 @@ CREATE TABLE problems (
 
 CREATE TABLE competition_problems (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    problem_id BIGINT UNSIGNED NOT NULL,
     competition_id BIGINT UNSIGNED NOT NULL,
+    problem_id BIGINT UNSIGNED NOT NULL,
     PRIMARY KEY (id),
     FOREIGN KEY (problem_id) REFERENCES problems(id),
-    FOREIGN KEY (competition_id) REFERENCES competitions(id)
+    FOREIGN KEY (competition_id) REFERENCES competitions(id),
+    UNIQUE KEY (competition_id, problem_id)
 );
 
 CREATE TABLE test_cases (
@@ -136,8 +137,8 @@ CREATE TABLE submissions (
 
 CREATE TABLE competition_submissions (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    submission_id BIGINT UNSIGNED NOT NULL,
     competition_id BIGINT UNSIGNED NOT NULL,
+    submission_id BIGINT UNSIGNED NOT NULL,
     team_id BIGINT UNSIGNED NOT NULL,
     PRIMARY KEY (id),
     FOREIGN KEY (submission_id) REFERENCES submissions(id),

@@ -100,6 +100,9 @@ class CompetitionParticipantRequest(BaseModel):
     username_or_team_name: str
     individual: bool
 
+class CompetitionProblemsRequest(BaseModel):
+    problem_id: int
+
 class ActivateOrDeactivate(str, Enum):
     activate = "activate"
     deactivate = "deactivate"

@@ -328,7 +328,7 @@
         * empty
     * Response body:
         * id: integer
-        * author_user_uisername: string
+        * author_user_username: string
         * name: string
         * statement: string
         * input_statement: string
@@ -349,7 +349,7 @@
     * Response body:
         * problems: array[ {
             * id: integer
-            * author_user_uisername: string
+            * author_user_username: string
             * name: string
             * statement: string
             * input_statement: string
@@ -372,7 +372,7 @@
     * Response body:
         * problems: array[ {
             * id: integer
-            * author_user_uisername: string
+            * author_user_username: string
             * name: string
             * statement: string
             * input_statement: string
@@ -495,7 +495,7 @@
         * empty
     * Response body:
         * id: integer
-        * author_user_uisername: string
+        * author_user_username: string
         * name: string
         * statement: string
         * input_statement: string
@@ -864,7 +864,7 @@
     * Response body:
         * empty
 
-* ### POST "/competitions/{competition_id}" — create a competition participant
+* ### POST "/competitions/{competition_id}/participants" — create a competition participant
     * Request headers:
         * Authroization: string (access token)
     * Request parameters:
@@ -964,6 +964,84 @@
     * Request parameters:
         * competition_id: integer
         * team_name: string
+    * Request body:
+        * empty
+    * Response body:
+        * empty
+
+* ### POST "/competitions/{competition_id}/problems" — create a competition problem
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * competition_id: integer
+    * Request body:
+        * problem_id: string
+    * Response body:
+        * empty
+
+* ### GET "/competitions/{competition_id}/problems/{problem_id}" — get a competition problem
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * competition_id: integer
+        * problem_id: string
+    * Request body:
+        * empty
+    * Response body:
+        * id: integer
+        * author_user_username: string
+        * name: string
+        * statement: string
+        * input_statement: string
+        * output_statement: string
+        * notes: string
+        * time_restriction: integer
+        * memory_restriction: integer
+        * private: boolean
+        * test_cases: array[ {
+            * id: integer
+            * problem_id: integer
+            * input: string
+            * solution: string
+            * score: integer
+            * opened: boolean
+        } ]
+
+* ### GET "/competitions/{competition_id}/problems" — get competition problems
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * competition_id: integer
+    * Request body:
+        * empty
+    * Response body:
+        * problems: array[ {
+            * id: integer
+            * author_user_username: string
+            * name: string
+            * statement: string
+            * input_statement: string
+            * output_statement: string
+            * notes: string
+            * time_restriction: integer
+            * memory_restriction: integer
+            * private: boolean
+            * test_cases: array[ {
+                * id: integer
+                * problem_id: integer
+                * input: string
+                * solution: string
+                * score: integer
+                * opened: boolean
+            } ]
+        }]
+
+* ### DELETE "/competitions/{competition_id}/problems/{problem_id}" — delete a competition problem
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * competition_id: integer
+        * problem_id: string
     * Request body:
         * empty
     * Response body:
