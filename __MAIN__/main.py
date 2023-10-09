@@ -1402,9 +1402,9 @@ def post_competition(competition: CompetitionRequest, authorization: Annotated[s
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
         cursor.execute("""
-            INSERT INTO competitions (author_user_id, name, description, start_time, end_time, private, maximum_team_members_number)
-            VALUES (%(author_user_id)s, %(name)s, %(description)s, %(start_time)s, %(end_time)s, %(private)s, %(maximum_team_members_number)s)
-        """, {'author_user_id': token.id, 'name': competition.name, 'description': competition.description, 'start_time': convert_and_validate_datetime(competition.start_time, 'start_time'), 'end_time': convert_and_validate_datetime(competition.end_time, 'end_time'), 'private': competition.private, 'maximum_team_members_number': competition.maximum_team_members_number})
+            INSERT INTO competitions (author_user_id, name, description, start_time, end_time, private, maximum_team_members_number, auto_confirm_participants)
+            VALUES (%(author_user_id)s, %(name)s, %(description)s, %(start_time)s, %(end_time)s, %(private)s, %(maximum_team_members_number)s, %(auto_confirm_participants)s)
+        """, {'author_user_id': token.id, 'name': competition.name, 'description': competition.description, 'start_time': convert_and_validate_datetime(competition.start_time, 'start_time'), 'end_time': convert_and_validate_datetime(competition.end_time, 'end_time'), 'private': competition.private, 'maximum_team_members_number': competition.maximum_team_members_number, 'auto_confirm_participants': competition.auto_confirm_participants})
         competition_id: int | None = cursor.lastrowid
         if competition_id is None:
             raise HTTPException(status_code=500, detail="Internal server error")
@@ -1428,7 +1428,8 @@ def get_competition(competition_id: int, authorization: Annotated[str | None, He
                     "ongoing", 
                     IF(NOW() < competitions.start_time, "unstarted", "ended")) AS status,
                 competitions.private AS private,
-                competitions.maximum_team_members_number AS maximum_team_members_number
+                competitions.maximum_team_members_number AS maximum_team_members_number,
+                competitions.auto_confirm_participants AS auto_confirm_participants
             FROM competitions
             INNER JOIN users ON competitions.author_user_id = users.id
             WHERE competitions.id = %(id)s
@@ -1529,6 +1530,9 @@ def put_competition(competition_id: int, competition: CompetitionRequestUpdate, 
         if competition.maximum_team_members_number is not None and competition.maximum_team_members_number > 0:
             update_set += "maximum_team_members_number = %(maximum_team_members_number)s, "
             update_dict['maximum_team_members_number'] = competition.maximum_team_members_number
+        if competition.auto_confirm_participants is not None:
+            update_set += "auto_confirm_participants = %(auto_confirm_participants)s, "
+            update_dict['auto_confirm_participants'] = competition.auto_confirm_participants
         if update_set == "":
             return JSONResponse({})
         if not check_if_competition_can_be_edited(cursor, competition_id, authorization):
@@ -1562,9 +1566,9 @@ def post_competition_participant(competition_id: int, participant: CompetitionPa
         author_confirmed: bool = False
         participant_confirmed: bool = False
         user_or_team_id: int = -1
-        cursor.execute("SELECT author_user_id, private, maximum_team_members_number FROM competitions WHERE id = %(id)s LIMIT 1", {'id': competition_id})
+        cursor.execute("SELECT author_user_id, private, maximum_team_members_number, auto_confirm_participants FROM competitions WHERE id = %(id)s LIMIT 1", {'id': competition_id})
         competition: Any = cursor.fetchone()
-        if competition['author_user_id'] == token.id:
+        if competition['author_user_id'] == token.id or competition['auto_confirm_participants']:
             author_confirmed = True
         cursor.execute("SELECT id, owner_user_id FROM teams WHERE name = BINARY %(name)s AND individual = %(individual)s LIMIT 1", {'name': participant.username_or_team_name, 'individual': participant.individual})
         team: Any = cursor.fetchone()

@@ -789,6 +789,7 @@
         * end_time: string
         * private: boolean
         * maximum_team_members_number: integer
+        * auto_confirm_participants: boolean
     * Response body:
         * competiton_id: integer
 
@@ -809,6 +810,7 @@
         * status: string (unstarted, ongoing or ended)
         * private: boolean
         * maximum_team_members_number: integer
+        * auto_confirm_participants: boolean
 
 * ### PUT "/competitions/{competition_id}/make-public" — make a competition public
     * Request headers:
@@ -851,6 +853,7 @@
         * start_time: string? (in the form of datetime %Y-%m-%d %H:%M:%S)
         * end_time: string? (in the form of datetime %Y-%m-%d %H:%M:%S)
         * maximum_team_members_number: integer?
+        * auto_confirm_participants: boolean?
     * Response body:
         * empty
 

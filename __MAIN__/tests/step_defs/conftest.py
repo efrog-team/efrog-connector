@@ -397,7 +397,7 @@ def submission(fields: str, name: str, names_convert: dict[str, str], data: dict
 def competition(fields: str, name: str, names_convert: dict[str, str], data: dict[str, str | int | bool]) -> None:
     fields_list: list[str] = []
     if fields == "all data":
-        fields_list = ['name', 'description', 'start_time', 'end_time', 'private', 'maximum_team_members_number']
+        fields_list = ['name', 'description', 'start_time', 'end_time', 'private', 'maximum_team_members_number', 'auto_confirm_participants']
     else:
         fields_list = fields.replace(" and ", ", ").split(", ")
     if name == "the correct public":
@@ -415,6 +415,8 @@ def competition(fields: str, name: str, names_convert: dict[str, str], data: dic
             data['private'] = 0
         if 'maximum_team_members_number' in fields_list:
             data['maximum_team_members_number'] = 3
+        if 'auto_confirm_participants' in fields_list:
+            data['auto_confirm_participants'] = False
     elif name == "the correct private":
         if 'id' in fields_list:
             data['id'] = 2
@@ -430,6 +432,8 @@ def competition(fields: str, name: str, names_convert: dict[str, str], data: dic
             data['private'] = 1
         if 'maximum_team_members_number' in fields_list:
             data['maximum_team_members_number'] = 3
+        if 'auto_confirm_participants' in fields_list:
+            data['auto_confirm_participants'] = False
     else:
         if 'id' in fields_list:
             data['id'] = 3
@@ -445,6 +449,8 @@ def competition(fields: str, name: str, names_convert: dict[str, str], data: dic
             data['private'] = 0
         if 'maximum_team_members_number' in fields_list:
             data['maximum_team_members_number'] = 3
+        if 'auto_confirm_participants' in fields_list:
+            data['auto_confirm_participants'] = False
 
 @then(parsers.parse("add {name} competition to the database"))
 def competition_in_database(name: str, names_convert: dict[str, str]) -> None:
@@ -455,7 +461,8 @@ def competition_in_database(name: str, names_convert: dict[str, str]) -> None:
             'start_time': '2022-01-01 00:00:00',
             'end_time': '2024-01-01 00:00:00',
             'private': 0,
-            'maximum_team_members_number': 3
+            'maximum_team_members_number': 3,
+            'auto_confirm_participants': False
         }, headers={
             'Authorization': client.post('/token', json={
                 'username': "correct",
@@ -474,7 +481,8 @@ def competition_in_database(name: str, names_convert: dict[str, str]) -> None:
             'start_time': '2022-01-01 00:00:00',
             'end_time': '2024-01-01 00:00:00',
             'private': 1,
-            'maximum_team_members_number': 3
+            'maximum_team_members_number': 3,
+            'auto_confirm_participants': False
         }, headers={
             'Authorization': client.post('/token', json={
                 'username': "correct",
@@ -488,7 +496,8 @@ def competition_in_database(name: str, names_convert: dict[str, str]) -> None:
             'start_time': '2021-01-01 00:00:00',
             'end_time': '2022-01-01 00:00:00',
             'private': 0,
-            'maximum_team_members_number': 3
+            'maximum_team_members_number': 3,
+            'auto_confirm_participants': False
         }, headers={
             'Authorization': client.post('/token', json={
                 'username': "correct",

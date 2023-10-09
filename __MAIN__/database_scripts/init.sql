@@ -47,6 +47,7 @@ CREATE TABLE competitions (
     end_time DATETIME NOT NULL,
     private BOOLEAN NOT NULL,
     maximum_team_members_number INT UNSIGNED NOT NULL,
+    auto_confirm_participants BOOLEAN NOT NULL,
     PRIMARY KEY (id),
     FOREIGN KEY (author_user_id) REFERENCES users(id)
 );

@@ -88,6 +88,7 @@ class CompetitionRequest(BaseModel):
     end_time: str
     private: bool
     maximum_team_members_number: int
+    auto_confirm_participants: bool
 
 class CompetitionRequestUpdate(BaseModel):
     name: str | None
@@ -95,6 +96,7 @@ class CompetitionRequestUpdate(BaseModel):
     start_time: str | None
     end_time: str | None
     maximum_team_members_number: int | None
+    auto_confirm_participants: bool | None
 
 class CompetitionParticipantRequest(BaseModel):
     username_or_team_name: str
