@@ -834,7 +834,7 @@
 
 * ### GET "/competitions/{competition_id}/check-if-can-be-edited" — check if a competition can be edited
     * Request headers:
-        * empty
+        * Authroization: string (access token)
     * Request parameters:
         * competition_id: integer
     * Request body:
