@@ -1510,7 +1510,7 @@ def put_competition(competition_id: int, competition: CompetitionRequestUpdate, 
             update_set += "description = %(description)s, "
             update_dict['description'] = competition.description
         if competition.start_time is not None and competition.start_time != '':
-            if convert_and_validate_datetime(competition.start_time) > datetime.now():
+            if convert_and_validate_datetime(competition.start_time) < datetime.now():
                 raise HTTPException(status_code=400, detail="Start time is in the past")
             update_set += "start_time = %(start_time)s, "
             update_dict['start_time'] = competition.start_time
