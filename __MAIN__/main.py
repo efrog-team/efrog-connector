@@ -1445,7 +1445,7 @@ def get_competition(competition_id: int, authorization: Annotated[str | None, He
                     SELECT 1
                     FROM team_members
                     INNER JOIN competition_participants ON team_members.team_id = competition_participants.team_id
-                    WHERE competition_participants.competition_id = %(id)s AND team_members.member_user_id = %(user_id)s
+                    WHERE competition_participants.competition_id = %(id)s AND competition_participants.author_confirmed = 1 AND team_members.member_user_id = %(user_id)s AND team_members.confirmed = 1
                     LIMIT 1
                 """, {'id': competition_id, 'user_id': token.id})
                 if cursor.fetchone() is None:
@@ -1629,7 +1629,7 @@ def get_competition_participants(competition_id: int, authorization: Annotated[s
                     SELECT 1
                     FROM team_members
                     INNER JOIN competition_participants ON team_members.team_id = competition_participants.team_id
-                    WHERE competition_participants.competition_id = %(id)s AND team_members.member_user_id = %(user_id)s
+                    WHERE competition_participants.competition_id = %(id)s AND competition_participants.author_confirmed = 1 AND team_members.member_user_id = %(user_id)s AND team_members.confirmed = 1
                     LIMIT 1
                 """, {'id': competition_id, 'user_id': token.id})
                 if cursor.fetchone() is None:
@@ -1742,7 +1742,7 @@ def post_competition_problem(competition_id: int, problem: CompetitionProblemsRe
 def get_competition_problem(competition_id: int, problem_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
-        cursor.execute("SELECT author_user_id, private, IF(NOW() > start_time, 1, 0) AS started FROM competitions WHERE id = %(competition_id)s LIMIT 1", {'competition_id': competition_id})
+        cursor.execute("SELECT author_user_id, private, IF(NOW() > start_time, 1, 0) AS started, IF(NOW() > end_time, 1, 0) AS ended FROM competitions WHERE id = %(competition_id)s LIMIT 1", {'competition_id': competition_id})
         competition: Any = cursor.fetchone()
         if competition is None:
             raise HTTPException(status_code=404, detail="Competition does not exist")
@@ -1755,11 +1755,21 @@ def get_competition_problem(competition_id: int, problem_id: int, authorization:
                     SELECT 1
                     FROM team_members
                     INNER JOIN competition_participants ON team_members.team_id = competition_participants.team_id
-                    WHERE competition_participants.competition_id = %(id)s AND team_members.member_user_id = %(user_id)s
+                    WHERE competition_participants.competition_id = %(id)s AND competition_participants.author_confirmed = 1 AND team_members.member_user_id = %(user_id)s AND team_members.confirmed = 1 AND team_members.coach = 0
                     LIMIT 1
                 """, {'id': competition_id, 'user_id': token.id})
                 if cursor.fetchone() is None:
-                    raise HTTPException(status_code=403, detail="You do not have permission to view problems of this competition")
+                    if not competition['ended']:
+                        raise HTTPException(status_code=403, detail="You do not have permission to view problems of this competition")
+                    cursor.execute("""
+                        SELECT 1
+                        FROM team_members
+                        INNER JOIN competition_participants ON team_members.team_id = competition_participants.team_id
+                        WHERE competition_participants.competition_id = %(id)s AND competition_participants.author_confirmed = 1 AND team_members.member_user_id = %(user_id)s AND team_members.confirmed = 1
+                        LIMIT 1
+                    """, {'id': competition_id, 'user_id': token.id})
+                    if cursor.fetchone() is None:
+                        raise HTTPException(status_code=403, detail="You do not have permission to view problems of this competition")
         cursor.execute("""
             SELECT
                 problems.id AS id,
@@ -1808,11 +1818,21 @@ def get_competition_problems(competition_id: int, authorization: Annotated[str |
                     SELECT 1
                     FROM team_members
                     INNER JOIN competition_participants ON team_members.team_id = competition_participants.team_id
-                    WHERE competition_participants.competition_id = %(id)s AND team_members.member_user_id = %(user_id)s
+                    WHERE competition_participants.competition_id = %(id)s AND competition_participants.author_confirmed = 1 AND team_members.member_user_id = %(user_id)s AND team_members.confirmed = 1 AND team_members.coach = 0
                     LIMIT 1
                 """, {'id': competition_id, 'user_id': token.id})
                 if cursor.fetchone() is None:
-                    raise HTTPException(status_code=403, detail="You do not have permission to view problems of this competition")
+                    if not competition['ended']:
+                        raise HTTPException(status_code=403, detail="You do not have permission to view problems of this competition")
+                    cursor.execute("""
+                        SELECT 1
+                        FROM team_members
+                        INNER JOIN competition_participants ON team_members.team_id = competition_participants.team_id
+                        WHERE competition_participants.competition_id = %(id)s AND competition_participants.author_confirmed = 1 AND team_members.member_user_id = %(user_id)s AND team_members.confirmed = 1
+                        LIMIT 1
+                    """, {'id': competition_id, 'user_id': token.id})
+                    if cursor.fetchone() is None:
+                        raise HTTPException(status_code=403, detail="You do not have permission to view problems of this competition")
         cursor.execute("""
             SELECT
                 problems.id AS id,
