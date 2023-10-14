@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Header, WebSocket
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from models import UserRequest, UserToken, UserRequestUpdate, UserVerifyEmail, UserResetPassword, TeamRequest, TeamRequestUpdate, TeamMemberRequest, ProblemRequest, ProblemRequestUpdate, TestCaseRequest, TestCaseRequestUpdate, SubmissionRequest, DebugRequest, DebugRequestMany, CompetitionRequest, CompetitionRequestUpdate, CompetitionParticipantRequest, CompetitionProblemsRequest, ActivateOrDeactivate, CoachOrContestant, ConfirmOrDecline, PrivateOrPublic, OpenedOrClosed, IndividualsOrTeams
+from models import UserRequest, UserToken, UserRequestUpdate, UserVerifyEmail, UserResetPassword, TeamRequest, TeamRequestUpdate, TeamMemberRequest, ProblemRequest, ProblemRequestUpdate, TestCaseRequest, TestCaseRequestUpdate, SubmissionRequest, DebugRequest, DebugRequestMany, CompetitionRequest, CompetitionRequestUpdate, CompetitionParticipantRequest, CompetitionProblemsRequest, ActivateOrDeactivate, CoachOrContestant, ConfirmOrDecline, PrivateOrPublic, OpenedOrClosed, IndividualsOrTeams, AuthoredOrParticipated
 from mysql.connector.abstracts import MySQLCursorAbstract
 from mysql.connector.errors import IntegrityError
 from config import email_config, database_config
@@ -1452,6 +1452,95 @@ def get_competition(competition_id: int, authorization: Annotated[str | None, He
                     raise HTTPException(status_code=403, detail="You do not have permission to view this competition")
         return JSONResponse(competition)
 
+@app.get("/competitions")
+def get_competitions(status: str | None = None, start: int = 1, limit: int = 100) -> JSONResponse:
+    if status not in ["ongoing", "unstarted", "ended", None]:
+        raise HTTPException(status_code=400, detail="Invalid status")
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("""
+            SELECT
+                competitions.id AS id,
+                users.username AS author_user_username, 
+                competitions.name AS name,
+                competitions.description AS description,
+                competitions.start_time AS start_time,
+                competitions.end_time AS end_time,
+                IF(NOW() BETWEEN competitions.start_time AND competitions.end_time, 
+                    "ongoing", 
+                    IF(NOW() < competitions.start_time, "unstarted", "ended")) AS status,
+                competitions.private AS private,
+                competitions.maximum_team_members_number AS maximum_team_members_number,
+                competitions.auto_confirm_participants AS auto_confirm_participants
+            FROM competitions
+            INNER JOIN users ON competitions.author_user_id = users.id
+            WHERE competitions.private = 0
+            LIMIT %(limit)s OFFSET %(start)s
+        """ + (status is not None and "AND status = %(status)s" or ""), {'status': status, 'limit': limit, 'start': start - 1})
+        return JSONResponse({
+            'competitions': cursor.fetchall()
+        })
+
+@app.get("/users/me/competitions/{authored_or_participated}")
+def get_users_competitions_authored(authored_or_participated: AuthoredOrParticipated, authorization: Annotated[str | None, Header()] = None, status: str | None = None, only_public: bool = False, only_private: bool = False) -> JSONResponse:
+    token: Token = decode_token(authorization)
+    if status not in ["ongoing", "unstarted", "ended", None]:
+        raise HTTPException(status_code=400, detail="Invalid status")
+    filter_conditions: str = ""
+    if status is not None:
+        filter_conditions += " AND status = %(status)s"
+    if only_public:
+        filter_conditions += " AND problems.private = 0"
+    if only_private:
+        filter_conditions += " AND problems.private = 1"
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        if authored_or_participated is AuthoredOrParticipated.authored:
+            cursor.execute("""
+                SELECT
+                    competitions.id AS id,
+                    users.username AS author_user_username,
+                    competitions.name AS name,
+                    competitions.description AS description,
+                    competitions.start_time AS start_time,
+                    competitions.end_time AS end_time,
+                    IF(NOW() BETWEEN competitions.start_time AND competitions.end_time, 
+                        "ongoing", 
+                        IF(NOW() < competitions.start_time, "unstarted", "ended")) AS status,
+                    competitions.private AS private,
+                    competitions.maximum_team_members_number AS maximum_team_members_number,
+                    competitions.auto_confirm_participants AS auto_confirm_participants
+                FROM competitions
+                INNER JOIN users ON competitions.author_user_id = users.id
+                WHERE competitions.author_user_id = %(user_id)s
+            """ + filter_conditions, {'user_id': token.id, 'status': status})
+        else:
+            cursor.execute("""
+            SELECT
+                competitions.id AS id,
+                users.username AS author_user_username,
+                competitions.name AS name,
+                competitions.description AS description,
+                competitions.start_time AS start_time,
+                competitions.end_time AS end_time,
+                IF(NOW() BETWEEN competitions.start_time AND competitions.end_time, 
+                    "ongoing", 
+                    IF(NOW() < competitions.start_time, "unstarted", "ended")) AS status,
+                competitions.private AS private,
+                competitions.maximum_team_members_number AS maximum_team_members_number,
+                competitions.auto_confirm_participants AS auto_confirm_participants,
+                teams.name AS participant_team_name
+            FROM competitions
+            INNER JOIN users ON competitions.author_user_id = users.id
+            INNER JOIN competition_participants ON competitions.id = competition_participants.competition_id
+            INNER JOIN teams ON competition_participants.team_id = teams.id
+            INNER JOIN team_members ON competition_participants.team_id = team_members.team_id
+            WHERE team_members.member_user_id = %(user_id)s
+        """ + filter_conditions, {'user_id': token.id, 'status': status})
+        return JSONResponse({
+            'competitions': cursor.fetchall()
+        })
+
 def detect_error_competitions(cursor: MySQLCursorAbstract, competition_id: int, author_user_id: int, ignore_ownership_if_private: bool, ignore_ownership_if_public: bool, ignore_internal_server_error: bool) -> None:
     cursor.execute("SELECT author_user_id, private FROM competitions WHERE id = %(competition_id)s LIMIT 1", {'competition_id': competition_id})
     competition: Any = cursor.fetchone()
@@ -1587,6 +1676,18 @@ def post_competition_participant(competition_id: int, participant: CompetitionPa
         counter: Any = cursor.fetchone()
         if counter['team_members_number'] > competition['maximum_team_members_number']:
             raise HTTPException(status_code=409, detail="There are more team members than allowed")
+        cursor.execute("SELECT member_user_id FROM team_members WHERE team_id = %(team_id)s AND coach = 0", {'team_id': user_or_team_id})
+        team_members: list[Any] = list(cursor.fetchall())
+        for team_member in team_members:
+            cursor.execute("""
+                SELECT 1
+                FROM team_members
+                INNER JOIN competition_participants ON team_members.team_id = competition_participants.team_id
+                WHERE competition_participants.competition_id = %(id)s AND competition_participants.author_confirmed = 1 AND team_members.member_user_id = %(user_id)s AND team_members.confirmed = 1
+                LIMIT 1
+            """, {'id': competition_id, 'user_id': team_member['member_user_id']})
+            if cursor.fetchone() is not None:
+                raise HTTPException(status_code=409, detail="One of the team members is already a participant of this competition")
         try:
             cursor.execute("INSERT INTO competition_participants (competition_id, team_id, author_confirmed, author_declined, participant_confirmed, participant_declined) VALUES (%(competition_id)s, %(team_id)s, %(author_confirmed)s, 0, %(participant_confirmed)s, 0)", {'competition_id': competition_id, 'team_id': user_or_team_id, 'author_confirmed': author_confirmed, 'participant_confirmed': participant_confirmed})
         except IntegrityError:
@@ -1890,3 +1991,365 @@ def delete_competition_problem(competition_id: int, problem_id: int, authorizati
                 raise HTTPException(status_code=404, detail="Problem is not added to this competition")
             raise HTTPException(status_code=500, detail="Internal Server Error")
     return JSONResponse({})
+
+@app.post("/competitions/{competition_id}/submissions")
+def competition_submit(competition_id: int, submission: SubmissionRequest, authorization: Annotated[str | None, Header()], no_realtime:  bool = False) -> JSONResponse:
+    if submission.code == "":
+        raise HTTPException(status_code=400, detail="Code cannot be empty")
+    if submission.language_name == "":
+        raise HTTPException(status_code=400, detail="Language name cannot be empty")
+    if submission.language_version == "":
+        raise HTTPException(status_code=400, detail="Language version cannot be empty")
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        detect_error_problems(cursor, submission.problem_id, token.id, False, True, True)
+        cursor.execute("SELECT id FROM languages WHERE name = %(name)s AND version = %(version)s AND supported = 1 LIMIT 1", {'name': submission.language_name, 'version': submission.language_version})
+        language: Any = cursor.fetchone()
+        if language is None:
+            raise HTTPException(status_code=404, detail="Language does not exist")
+        cursor.execute("""
+            SELECT 
+                IF(NOW() BETWEEN competitions.start_time AND competitions.end_time, 
+                    "ongoing", 
+                    IF(NOW() < competitions.start_time, "unstarted", "ended")) AS status
+            FROM competitions WHERE id = %(competition_id)s
+            LIMIT 1
+        """, {'competition_id': competition_id})
+        competition: Any = cursor.fetchone()
+        if competition is None:
+            raise HTTPException(status_code=404, detail="Competition does not exist")
+        if competition['status'] != "ongoing":
+            raise HTTPException(status_code=403, detail="Competition is not ongoing")
+        cursor.execute("""
+            SELECT 
+                teams.id AS id
+            FROM teams
+            INNER JOIN competition_participants ON teams.id = competition_participants.team_id
+            INNER JOIN team_members ON teams.id = team_members.team_id
+            WHERE competition_participants.competition_id = %(competition_id)s AND team_members.member_user_id = %(user_id)s AND team_members.confirmed = 1
+            LIMIT 1
+        """, {'competition_id': competition_id, 'user_id': token.id})
+        team: Any = cursor.fetchone()
+        if team is None:
+            raise HTTPException(status_code=403, detail="You are not a member of this competition")
+        cursor.execute("SELECT 1 FROM competition_problems WHERE competition_id = %(competition_id)s AND problem_id = %(problem_id)s LIMIT 1", {'competition_id': competition_id, 'problem_id': submission.problem_id})
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=403, detail="Problem is not added to this competition")
+        cursor.execute("""
+            INSERT INTO submissions (author_user_id, problem_id, code, language_id, time_sent, checked, compiled, compilation_details, correct_score, total_score, total_verdict_id)
+            VALUES (%(author_user_id)s, %(problem_id)s, %(code)s, %(language_id)s, NOW(), 0, 0, '', 0, 0, 1)
+        """, {'author_user_id': token.id, 'problem_id': submission.problem_id, 'code': submission.code, 'language_id': language['id']})
+        submission_id: int | None = cursor.lastrowid
+        if submission_id is None:
+            raise HTTPException(status_code=500, detail="Internal server error")
+        cursor.execute("""
+            INSERT INTO competition_submissions (competition_id, submission_id, team_id)
+            VALUES (%(competition_id)s, %(submission_id)s, %(team_id)s)
+        """, {'competition_id': competition_id, 'submission_id': submission_id, 'team_id': team['id']})
+        if not no_realtime:
+            current_websockets[submission_id] = CurrentWebsocket(None, None, [])
+            checking_queue.submit(check_submission, submission_id, submission.problem_id, submission.code, f"{submission.language_name} ({submission.language_version})", no_realtime)
+            return JSONResponse({
+                'submission_id': submission_id
+            })
+        else:
+            checking_queue.submit(check_submission, submission_id, submission.problem_id, submission.code, f"{submission.language_name} ({submission.language_version})", no_realtime).result()
+            cursor.execute("""
+                SELECT
+                    submissions.id AS id,
+                    users.username AS author_user_username,
+                    submissions.problem_id AS problem_id,
+                    problems.name AS problem_name,
+                    submissions.code AS code,
+                    languages.name AS language_name,
+                    languages.version AS language_version,
+                    submissions.time_sent AS time_sent,
+                    submissions.checked AS checked,
+                    submissions.compiled AS compiled,
+                    submissions.compilation_details AS compilation_details,
+                    submissions.correct_score AS correct_score,
+                    submissions.total_score AS total_score,
+                    verdicts.text AS total_verdict
+                FROM submissions
+                INNER JOIN users ON submissions.author_user_id = users.id
+                INNER JOIN problems ON submissions.problem_id = problems.id
+                INNER JOIN languages ON submissions.language_id = languages.id
+                INNER JOIN verdicts ON submissions.total_verdict_id = verdicts.id
+                WHERE submissions.id = %(submission_id)s
+                LIMIT 1
+            """, {'submission_id': submission_id})
+            submission_db: Any = cursor.fetchone()
+            cursor.execute("""
+                SELECT
+                    submission_results.test_case_id AS test_case_id,
+                    test_cases.score AS test_case_score,
+                    test_cases.opened AS test_case_opened,
+                    verdicts.text AS verdict_text,
+                    submission_results.time_taken AS time_taken,
+                    submission_results.cpu_time_taken AS cpu_time_taken,
+                    submission_results.virtual_memory_taken AS virtual_memory_taken,
+                    submission_results.physical_memory_taken AS physical_memory_taken
+                FROM submission_results
+                INNER JOIN test_cases ON submission_results.test_case_id = test_cases.id
+                INNER JOIN verdicts ON submission_results.verdict_id = verdicts.id
+                WHERE submission_results.submission_id = %(submission_id)s
+            """, {'submission_id': submission_id})
+            submission_db['results'] = cursor.fetchall()
+            return JSONResponse(submission_db)
+
+@app.get("/competitions/{competition_id}/submissions/{submission_id}")
+def get_competition_submission(competition_id: int, submission_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("SELECT author_user_id FROM competitions WHERE id = %(competition_id)s LIMIT 1", {'competition_id': competition_id})
+        competition: Any = cursor.fetchone()
+        if competition is None:
+            raise HTTPException(status_code=404, detail="Competition does not exist")
+        cursor.execute("""
+            SELECT checked
+            FROM submissions
+            INNER JOIN competition_submissions ON submissions.id = competition_submissions.submission_id
+            INNER JOIN competition_participants ON competition_submissions.competition_id = competition_participants.competition_id
+            INNER JOIN team_members ON competition_participants.team_id = team_members.team_id
+            WHERE submissions.id = %(submission_id)s AND team_members.member_user_id = %(user_id)s AND team_members.confirmed = 1
+            LIMIT 1""", {'submission_id': submission_id, 'user_id': token.id})
+        submission_first: Any = cursor.fetchone()
+        if submission_first is None:
+            cursor.execute("SELECT checked FROM submissions WHERE id = %(submission_id)s LIMIT 1", {'submission_id': submission_id})
+            if cursor.fetchone() is None:
+                raise HTTPException(status_code=404, detail="Submission does not exist")
+            if competition['author_user_id'] != token.id:
+                raise HTTPException(status_code=403, detail="You do not have permission to view this submission")
+        if submission_first['checked']:
+            cursor.execute("""
+                SELECT
+                    submissions.id AS id,
+                    users.username AS author_user_username,
+                    submissions.problem_id AS problem_id,
+                    problems.name AS problem_name,
+                    submissions.code AS code,
+                    languages.name AS language_name,
+                    languages.version AS language_version,
+                    submissions.time_sent AS time_sent,
+                    submissions.checked AS checked,
+                    submissions.compiled AS compiled,
+                    submissions.compilation_details AS compilation_details,
+                    submissions.correct_score AS correct_score,
+                    submissions.total_score AS total_score,
+                    verdicts.text AS total_verdict
+                FROM submissions
+                INNER JOIN users ON submissions.author_user_id = users.id
+                INNER JOIN problems ON submissions.problem_id = problems.id
+                INNER JOIN languages ON submissions.language_id = languages.id
+                INNER JOIN verdicts ON submissions.total_verdict_id = verdicts.id
+                WHERE submissions.id = %(submission_id)s
+                LIMIT 1
+            """, {'submission_id': submission_id})
+            submission: Any = cursor.fetchone()
+            cursor.execute("""
+                SELECT
+                    submission_results.test_case_id AS test_case_id,
+                    test_cases.score AS test_case_score,
+                    test_cases.opened AS test_case_opened,
+                    verdicts.text AS verdict_text,
+                    submission_results.time_taken AS time_taken,
+                    submission_results.cpu_time_taken AS cpu_time_taken,
+                    submission_results.virtual_memory_taken AS virtual_memory_taken,
+                    submission_results.physical_memory_taken AS physical_memory_taken
+                FROM submission_results
+                INNER JOIN test_cases ON submission_results.test_case_id = test_cases.id
+                INNER JOIN verdicts ON submission_results.verdict_id = verdicts.id
+                WHERE submission_results.submission_id = %(submission_id)s
+            """, {'submission_id': submission_id})
+            submission['results'] = cursor.fetchall()
+            return JSONResponse(submission)
+        else:
+            cursor.execute("""
+                SELECT
+                    submissions.id AS id,
+                    users.username AS author_user_username,
+                    submissions.problem_id AS problem_id,
+                    problems.name AS problem_name,
+                    submissions.code AS code,
+                    languages.name AS language_name,
+                    languages.version AS language_version,
+                    submissions.time_sent AS time_sent,
+                    submissions.checked AS checked
+                FROM submissions
+                INNER JOIN users ON submissions.author_user_id = users.id
+                INNER JOIN problems ON submissions.problem_id = problems.id
+                INNER JOIN languages ON submissions.language_id = languages.id
+                INNER JOIN verdicts ON submissions.total_verdict_id = verdicts.id
+                WHERE submissions.id = %(submission_id)s
+                LIMIT 1
+            """, {'submission_id': submission_id})
+            submission: Any = cursor.fetchone()
+            submission['realime_link'] = f"ws://localhost:8000/submissions/{submission_id}/realtime"
+            return JSONResponse(submission, status_code=202)
+
+@app.get("/competitions/{competition_id}/participants/{individuals_or_teams}/{username_or_team_name}/submissions/public")
+def get_competition_submissions_by_team(competition_id: int, individuals_or_teams: IndividualsOrTeams, username_or_team_name: str, authorization: Annotated[str | None, Header()])-> JSONResponse:
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("SELECT 1 FROM competitions WHERE id = %(competition_id)s LIMIT 1", {'competition_id': competition_id})
+        competition: Any = cursor.fetchone()
+        if competition is None:
+            raise HTTPException(status_code=404, detail="Competition does not exist")
+        cursor.execute("""
+            SELECT 
+                teams.id AS id
+            FROM teams
+            INNER JOIN competition_participants ON teams.id = competition_participants.team_id
+            WHERE competition_participants.competition_id = %(competition_id)s AND teams.name = BINARY %(team_name)s AND competition_participants.author_confirmed = 1 AND teams.individual = %(individual)s
+            LIMIT 1
+        """, {'competition_id': competition_id, 'team_name': username_or_team_name, 'individual': individuals_or_teams is IndividualsOrTeams.individuals})
+        team: Any = cursor.fetchone()
+        if team is None:
+            raise HTTPException(status_code=403, detail="This team is not a participant of this competition")
+        cursor.execute("SELECT 1 FROM team_members WHERE team_id = %(team_id)s AND member_user_id = %(user_id)s AND confirmed = 1 LIMIT 1", {'team_id': team['id'], 'user_id': token.id})
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=403, detail="You are not a member of this team")
+        cursor.execute("""
+            SELECT 
+                submissions.id AS id,
+                users.username AS author_user_username,
+                problems.id AS problem_id,
+                problems.name AS problem_name,
+                languages.name AS language_name,
+                languages.version AS language_version,
+                submissions.time_sent AS time_sent,
+                verdicts.text AS total_verdict
+            FROM submissions
+            INNER JOIN users ON submissions.author_user_id = users.id
+            INNER JOIN problems ON submissions.problem_id = problems.id
+            INNER JOIN languages ON submissions.language_id = languages.id
+            INNER JOIN verdicts ON submissions.total_verdict_id = verdicts.id
+            INNER JOIN competition_submissions ON submissions.id = competition_submissions.submission_id
+            INNER JOIN competition_participants ON competition_submissions.competition_id = competition_participants.competition_id
+            WHERE competition_submissions.competition_id = %(competition_id)s AND competition_participants.team_id = %(team_id)s AND submissions.checked = 1
+        """, {'competition_id': competition_id, 'team_id': team['id']})
+        return JSONResponse({
+            'submissions': cursor.fetchall()
+        })
+
+@app.get("/competitions/{competition_id}/participants/{individuals_or_teams}/{username_or_team_name}/submissions/public/problems/{problem_id}")
+def get_competition_submissions_by_team_and_problem(competition_id: int, individuals_or_teams: IndividualsOrTeams, username_or_team_name: str, problem_id: int, authorization: Annotated[str | None, Header()])-> JSONResponse:
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("SELECT 1 FROM competitions WHERE id = %(competition_id)s LIMIT 1", {'competition_id': competition_id})
+        competition: Any = cursor.fetchone()
+        if competition is None:
+            raise HTTPException(status_code=404, detail="Competition does not exist")
+        cursor.execute("""
+            SELECT 
+                teams.id AS id
+            FROM teams
+            INNER JOIN competition_participants ON teams.id = competition_participants.team_id
+            WHERE competition_participants.competition_id = %(competition_id)s AND teams.name = BINARY %(team_name)s AND competition_participants.author_confirmed = 1 AND teams.individual = %(individual)s
+            LIMIT 1
+        """, {'competition_id': competition_id, 'team_name': username_or_team_name, 'individual': individuals_or_teams is IndividualsOrTeams.individuals})
+        team: Any = cursor.fetchone()
+        if team is None:
+            raise HTTPException(status_code=403, detail="This team is not a participant of this competition")
+        cursor.execute("SELECT 1 FROM team_members WHERE team_id = %(team_id)s AND member_user_id = %(user_id)s AND confirmed = 1 LIMIT 1", {'team_id': team['id'], 'user_id': token.id})
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=403, detail="You are not a member of this team")
+        cursor.execute("SELECT 1 FROM competition_problems WHERE competition_id = %(competition_id)s AND problem_id = %(problem_id)s LIMIT 1", {'competition_id': competition_id, 'problem_id': problem_id})
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=403, detail="Problem is not added to this competition")
+        cursor.execute("""
+            SELECT 
+                submissions.id AS id,
+                users.username AS author_user_username,
+                problems.id AS problem_id,
+                problems.name AS problem_name,
+                languages.name AS language_name,
+                languages.version AS language_version,
+                submissions.time_sent AS time_sent,
+                verdicts.text AS total_verdict
+            FROM submissions
+            INNER JOIN users ON submissions.author_user_id = users.id
+            INNER JOIN problems ON submissions.problem_id = problems.id
+            INNER JOIN languages ON submissions.language_id = languages.id
+            INNER JOIN verdicts ON submissions.total_verdict_id = verdicts.id
+            INNER JOIN competition_submissions ON submissions.id = competition_submissions.submission_id
+            INNER JOIN competition_participants ON competition_submissions.competition_id = competition_participants.competition_id
+            WHERE competition_submissions.competition_id = %(competition_id)s AND competition_participants.team_id = %(team_id)s AND problems.id = %(problem_id)s AND submissions.checked = 1
+        """, {'competition_id': competition_id, 'team_id': team['id'], 'problem_id': problem_id})
+        return JSONResponse({
+            'submissions': cursor.fetchall()
+        })
+
+@app.get("/competitions/{competition_id}/scoreboard")
+def get_competition_scoreboard(competition_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("SELECT private FROM competitions WHERE id = %(id)s LIMIT 1", {'id': competition_id})
+        competition: Any = cursor.fetchone()
+        if competition is None:
+            raise HTTPException(status_code=404, detail="Competition does not exist")
+        if competition['private']:
+            token: Token = decode_token(authorization)
+            if competition['author_user_username'] != token.username:
+                cursor.execute("""
+                    SELECT 1
+                    FROM team_members
+                    INNER JOIN competition_participants ON team_members.team_id = competition_participants.team_id
+                    WHERE competition_participants.competition_id = %(id)s AND competition_participants.author_confirmed = 1 AND team_members.member_user_id = %(user_id)s AND team_members.confirmed = 1
+                    LIMIT 1
+                """, {'id': competition_id, 'user_id': token.id})
+                if cursor.fetchone() is None:
+                    raise HTTPException(status_code=403, detail="You do not have permission to view this competition")
+        results: list[dict[str, Any]] = []
+        cursor.execute("""
+            SELECT 
+                teams.id AS id,
+                teams.name AS name,
+                teams.individual AS individual
+            FROM teams
+            INNER JOIN competition_participants ON teams.id = competition_participants.team_id
+            WHERE competition_participants.competition_id = %(id)s AND competition_participants.author_confirmed = 1
+        """, {'id': competition_id})
+        teams: list[Any] = list(cursor.fetchall())
+        cursor.execute("""
+            SELECT 
+                problems.id AS id,
+                problems.name AS name
+            FROM problems
+            INNER JOIN competition_problems ON problems.id = competition_problems.problem_id
+            WHERE competition_problems.competition_id = %(id)s
+        """, {'id': competition_id})
+        problems: list[Any] = list(cursor.fetchall())
+        for team in teams:
+            results.append({
+                'username_or_team_name': team['name'],
+                'individual': team['individual'],
+                'problems': []
+            })
+            total_score: int = 0
+            for problem in problems:
+                cursor.execute("""
+                    SELECT
+                        MAX(submissions.total_score) AS score
+                    FROM submissions
+                    INNER JOIN competition_submissions ON submissions.id = competition_submissions.submission_id
+                    WHERE competition_submissions.team_id = %(team_id)s AND submissions.problem_id = %(problem_id)s
+                """, {'team_id': team['id'], 'problem_id': problem['id']})
+                score: Any = cursor.fetchone()
+                if score is None:
+                    score = 0
+                results[-1]['problems'].append({
+                    'id': problem['id'],
+                    'name': problem['name'],
+                    'best_score': score['score']
+                })
+                total_score += score['score']
+            results[-1]['total_score'] = total_score
+        return JSONResponse({
+            'participants': sorted(results, key=lambda x: x['total_score'], reverse=True)
+        })

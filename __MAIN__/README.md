@@ -812,6 +812,75 @@
         * maximum_team_members_number: integer
         * auto_confirm_participants: boolean
 
+* ### GET "/competitions?status={status}&start={start}&limit={limit}" — get all public competition
+    * Request headers:
+        * empty
+    * Request parameters:
+        * status: string? (unstarted, ongoing or ended)
+        * start: integer?
+        * limit: integer?
+    * Request body:
+        * empty
+    * Response body:
+        * competitions: array[ {
+            * id: integer
+            * author_user_username: string
+            * name: string
+            * description: string
+            * start_time: string (in the form of datetime %Y-%m-%d %H:%M:%S)
+            * end_time: string (in the form of datetime %Y-%m-%d %H:%M:%S)
+            * status: string (unstarted, ongoing or ended)
+            * private: boolean
+            * maximum_team_members_number: integer
+            * auto_confirm_participants: boolean
+        }]
+
+* ### GET "/users/me/competitions/authored?status={status}&only_public={only_public}&only_private={only_private}" — get your authored competitions
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * status: string? (unstarted, ongoing or ended)
+        * only_private: boolean?
+        * only_public: boolean?
+    * Request body:
+        * empty
+    * Response body:
+        * competitions: array[ {
+            * id: integer
+            * author_user_username: string
+            * name: string
+            * description: string
+            * start_time: string (in the form of datetime %Y-%m-%d %H:%M:%S)
+            * end_time: string (in the form of datetime %Y-%m-%d %H:%M:%S)
+            * status: string (unstarted, ongoing or ended)
+            * private: boolean
+            * maximum_team_members_number: integer
+            * auto_confirm_participants: boolean
+        }]
+
+* ### GET "/users/me/competitions/authored?status={status}&only_public={only_public}&only_private={only_private}" — get your participated competitions
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * status: string? (unstarted, ongoing or ended)
+        * only_private: boolean?
+        * only_public: boolean?
+    * Request body:
+        * empty
+    * Response body:
+        * competitions: array[ {
+            * id: integer
+            * author_user_username: string
+            * name: string
+            * description: string
+            * start_time: string (in the form of datetime %Y-%m-%d %H:%M:%S)
+            * end_time: string (in the form of datetime %Y-%m-%d %H:%M:%S)
+            * status: string (unstarted, ongoing or ended)
+            * private: boolean
+            * maximum_team_members_number: integer
+            * auto_confirm_participants: boolean
+        }]
+
 * ### PUT "/competitions/{competition_id}/make-public" — make a competition public
     * Request headers:
         * Authroization: string (access token)
@@ -1049,3 +1118,188 @@
         * empty
     * Response body:
         * empty
+
+* ### POST "/competitions/{competition_id}/submissions?no_realtime={no_realtime}" — create a submission for a competition
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * competition_id: integer
+        * no_realtime: boolean?
+    * Request body:
+        * problem_id: integer
+        * code: string
+        * language_name: string
+        * language_version: string
+    * Response body (no_realtime=False):
+        * submission_id: integer
+    * Response body (no_realtime=True):
+        * id: integer
+        * author_user_username: string
+        * problem_id: integer
+        * problem_name: string
+        * code: string
+        * language_name: string
+        * language_version: string
+        * time_sent: string (in the form of datetime %Y-%m-%d %H:%M:%S)
+        * checked: boolean
+        * compiled: boolean
+        * compilation_details: string
+        * correct_score: integer
+        * total_score: integer
+        * total_verdict: string
+        * results: array[ {
+            * test_case_id: integer
+            * test_case_score: integer
+            * test_case_opened: boolean
+            * verdict_text: string
+            * time_taken: integer
+            * cpu_time_taken: integer
+            * virtual_memory_taken: integer
+            * physical_memory_taken: integer
+        } ]
+
+* ### GET "/competitions/{competition_id}/submissions/{submission_id}" — get a submission from a competition
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * competition_id: integer
+        * submission_id: integer
+    * Request body:
+        * empty
+    * Response body (200 Code):
+        * id: integer
+        * author_user_username: string
+        * problem_id: integer
+        * problem_name: string
+        * code: string
+        * language_name: string
+        * language_version: string
+        * time_sent: string (in the form of datetime %Y-%m-%d %H:%M:%S)
+        * checked: boolean
+        * compiled: boolean
+        * compilation_details: string
+        * correct_score: integer
+        * total_score: integer
+        * total_verdict: string
+        * results: array[ {
+            * test_case_id: integer
+            * test_case_score: integer
+            * test_case_opened: boolean
+            * verdict_text: string
+            * time_taken: integer
+            * cpu_time_taken: integer
+            * virtual_memory_taken: integer
+            * physical_memory_taken: integer
+        } ]
+    * Response body (202 Code):
+        * id: integer
+        * author_user_username: string
+        * problem_id: integer
+        * problem_name: string
+        * code: string
+        * language_name: string
+        * language_version: string
+        * time_sent: string (in the form of datetime %Y-%m-%d %H:%M:%S)
+        * checked: boolean
+        * realime_link: string (link)
+
+* ### GET "/competitions/{competition_id}/participants/individuals/{username_or_team_name}/submissions/public" — get public data about all individual participant's submissions from a competition
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * competition_id: integer
+        * username_or_team_name: string
+    * Request body:
+        * empty
+    * Response body:
+        * submissions: array[ {
+            * id: integer
+            * author_user_username: string
+            * problem_id: integer
+            * problem_name: string
+            * language_name: string
+            * language_version: string
+            * time_sent: string (in the form of date %Y-%m-%d %H:%M:%S)
+            * total_verdict: string
+        } ]
+
+* ### GET "/competitions/{competition_id}/participants/teams/{username_or_team_name}/submissions/public" — get public data about all team participant's submissions from a competition
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * competition_id: integer
+        * username_or_team_name: string
+    * Request body:
+        * empty
+    * Response body:
+        * submissions: array[ {
+            * id: integer
+            * author_user_username: string
+            * problem_id: integer
+            * problem_name: string
+            * language_name: string
+            * language_version: string
+            * time_sent: string (in the form of date %Y-%m-%d %H:%M:%S)
+            * total_verdict: string
+        } ]
+
+
+* ### GET "/competitions/{competition_id}/participants/individuals/{username_or_team_name}/submissions/public/problems/{problem_id}" — get public data about all individual participant's submissions from a competition for a problem
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * competition_id: integer
+        * username_or_team_name: string
+        * problem_id: integer
+    * Request body:
+        * empty
+    * Response body:
+        * submissions: array[ {
+            * id: integer
+            * author_user_username: string
+            * problem_id: integer
+            * problem_name: string
+            * language_name: string
+            * language_version: string
+            * time_sent: string (in the form of date %Y-%m-%d %H:%M:%S)
+            * total_verdict: string
+        } ]
+
+* ### GET "/competitions/{competition_id}/participants/teams/{username_or_team_name}/submissions/public/problems/{problem_id}" — get public data about all team participant's submissions from a competition for a problem
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * competition_id: integer
+        * username_or_team_name: string
+    * Request body:
+        * empty
+    * Response body:
+        * submissions: array[ {
+            * id: integer
+            * author_user_username: string
+            * problem_id: integer
+            * problem_name: string
+            * language_name: string
+            * language_version: string
+            * time_sent: string (in the form of date %Y-%m-%d %H:%M:%S)
+            * total_verdict: string
+        } ]
+
+* ### GET "/competitions/{competition_id}/scoreboard" — get competition's scoreboard
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * competition_id: integer
+    * Request body:
+        * empty
+    * Response body:
+        * participants: array[ {
+            * username_or_team_name: string
+            * individual: boolean
+            * problems: array[ {
+                * id: integer
+                * name: string
+                * best_score: integer
+            }]
+            * total_score: integer
+        }]

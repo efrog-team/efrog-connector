@@ -128,3 +128,7 @@ class OpenedOrClosed(str, Enum):
 class IndividualsOrTeams(str, Enum):
     individuals = "individuals"
     teams = "teams"
+
+class AuthoredOrParticipated(str, Enum):
+    authored = "authored"
+    participated = "participated"
