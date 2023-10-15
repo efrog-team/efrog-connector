@@ -32,7 +32,8 @@ database_config: dict[str, str | int | Type[CustomConverter] | None] = {
     'password': config['DB_PASSWORD'],
     'database': config['DB_DATABASE'],
     'port': port,
-    'converter_class': CustomConverter
+    'converter_class': CustomConverter,
+    'charset': 'utf8mb4'
 }
 
 email_config: dict[str, str] = {
