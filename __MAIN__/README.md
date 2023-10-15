@@ -858,7 +858,7 @@
             * auto_confirm_participants: boolean
         }]
 
-* ### GET "/users/me/competitions/authored?status={status}&only_public={only_public}&only_private={only_private}" — get your participated competitions
+* ### GET "/users/me/competitions/participated?status={status}&only_public={only_public}&only_private={only_private}" — get your participated competitions
     * Request headers:
         * Authroization: string (access token)
     * Request parameters:
