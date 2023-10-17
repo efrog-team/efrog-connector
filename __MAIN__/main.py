@@ -1529,7 +1529,12 @@ def get_users_competitions_authored(authored_or_participated: AuthoredOrParticip
                 competitions.private AS private,
                 competitions.maximum_team_members_number AS maximum_team_members_number,
                 competitions.auto_confirm_participants AS auto_confirm_participants,
-                teams.name AS participant_team_name
+                teams.name AS username_or_team_name,
+                teams.individual AS individual,
+                competition_participants.author_confirmed AS author_confirmed,
+                competition_participants.author_declined AS author_declined,
+                competition_participants.participant_confirmed AS participant_confirmed,
+                competition_participants.participant_declined AS participant_declined
             FROM competitions
             INNER JOIN users ON competitions.author_user_id = users.id
             INNER JOIN competition_participants ON competitions.id = competition_participants.competition_id
@@ -1751,6 +1756,50 @@ def get_competition_participants(competition_id: int, authorization: Annotated[s
         return JSONResponse({
             'participants': list(cursor.fetchall())
         })
+
+@app.get("/competitions/{competition_id}/participants/users/{username}")
+def get_competition_participant_by_username(competition_id: int, username: str, authorization: Annotated[str | None, Header()] = None) -> JSONResponse:
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("SELECT author_user_id, private FROM competitions WHERE id = %(competition_id)s LIMIT 1", {'competition_id': competition_id})
+        competition: Any = cursor.fetchone()
+        if competition is None:
+            raise HTTPException(status_code=404, detail="Competition does not exist")
+        if competition['private']:
+            token: Token = decode_token(authorization)
+            if competition['author_user_id'] != token.id:
+                cursor.execute("""
+                    SELECT 1
+                    FROM team_members
+                    INNER JOIN competition_participants ON team_members.team_id = competition_participants.team_id
+                    WHERE competition_participants.competition_id = %(id)s AND competition_participants.author_confirmed = 1 AND team_members.member_user_id = %(user_id)s AND team_members.confirmed = 1
+                    LIMIT 1
+                """, {'id': competition_id, 'user_id': token.id})
+                if cursor.fetchone() is None:
+                    raise HTTPException(status_code=403, detail="You do not have permission to view this competition")
+        cursor.execute("SELECT id FROM users WHERE username = BINARY %(username)s LIMIT 1", {'username': username})
+        user: Any = cursor.fetchone()
+        if user is None:
+            raise HTTPException(status_code=404, detail="User does not exist")
+        cursor.execute("""
+            SELECT
+                teams.name AS username_or_team_name,
+                teams.individual AS individual,
+                competition_participants.author_confirmed AS author_confirmed,
+                competition_participants.author_declined AS author_declined,
+                competition_participants.participant_confirmed AS participant_confirmed,
+                competition_participants.participant_declined AS participant_declined
+            FROM competitions
+            INNER JOIN competition_participants ON competitions.id = competition_participants.competition_id
+            INNER JOIN teams ON competition_participants.team_id = teams.id
+            INNER JOIN team_members ON competition_participants.team_id = team_members.team_id
+            WHERE competitions.id = %(competition_id)s AND team_members.member_user_id = %(user_id)s
+            LIMIT 1
+        """, {'competition_id': competition_id, 'user_id': user['id']})
+        participant: Any = cursor.fetchone()
+        if participant is None:
+            raise HTTPException(status_code=404, detail="User is not a participant of this competition")
+        return JSONResponse(participant)
 
 @app.put("/competitions/{competition_id}/participants/{individuals_or_teams}/{username_or_team_name}/{confirm_or_decline}")
 def put_competition_participant_confirm_or_decline(competition_id: int, individuals_or_teams: IndividualsOrTeams, username_or_team_name: str, confirm_or_decline: ConfirmOrDecline, authorization: Annotated[str | None, Header()]) -> JSONResponse:

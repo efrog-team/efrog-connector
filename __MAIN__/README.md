@@ -879,6 +879,12 @@
             * private: boolean
             * maximum_team_members_number: integer
             * auto_confirm_participants: boolean
+            * username_or_team_name: string
+            * individual: boolean
+            * author_confirmed: boolean
+            * author_declined: boolean
+            * participant_confirmed: boolean,
+            * participant_declined: boolean
         }]
 
 * ### PUT "/competitions/{competition_id}/make-public" — make a competition public
@@ -974,6 +980,22 @@
             * participant_confirmed: boolean,
             * participant_declined: boolean
         } ]
+
+* ### GET "/competitions/{competition_id}/participants/users/{username}" — get a participation data about a user
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * competition_id: integer
+        * username: string
+    * Request body:
+        * empty
+    * Response body:
+        * username_or_team_name: string
+        * individual: boolean
+        * author_confirmed: boolean
+        * author_declined: boolean
+        * participant_confirmed: boolean,
+        * participant_declined: boolean
 
 * ### PUT "/competitions/{competition_id}/participants/individuals/{username}/confirm" — confirm an individual participant
     * Request headers:
