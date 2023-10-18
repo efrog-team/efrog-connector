@@ -2076,12 +2076,12 @@ def competition_submit(competition_id: int, submission: SubmissionRequest, autho
             FROM teams
             INNER JOIN competition_participants ON teams.id = competition_participants.team_id
             INNER JOIN team_members ON teams.id = team_members.team_id
-            WHERE competition_participants.competition_id = %(competition_id)s AND team_members.member_user_id = %(user_id)s AND team_members.confirmed = 1
+            WHERE competition_participants.competition_id = %(competition_id)s AND competition_participants.author_confirmed = 1 AND team_members.member_user_id = %(user_id)s AND team_members.confirmed = 1
             LIMIT 1
         """, {'competition_id': competition_id, 'user_id': token.id})
         team: Any = cursor.fetchone()
         if team is None:
-            raise HTTPException(status_code=403, detail="You are not a member of this competition")
+            raise HTTPException(status_code=403, detail="You are not a confirmed member of this competition")
         cursor.execute("SELECT 1 FROM competition_problems WHERE competition_id = %(competition_id)s AND problem_id = %(problem_id)s LIMIT 1", {'competition_id': competition_id, 'problem_id': submission.problem_id})
         if cursor.fetchone() is None:
             raise HTTPException(status_code=403, detail="Problem is not added to this competition")
