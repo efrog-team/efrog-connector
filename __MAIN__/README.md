@@ -1321,7 +1321,7 @@
             * problems: array[ {
                 * id: integer
                 * name: string
-                * best_score: integer
+                * best_score: integer | null (if there are no submissions)
             }]
-            * total_score: integer
+            * total_score: integer | null (if there are no submissions)
         }]

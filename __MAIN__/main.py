@@ -2334,8 +2334,7 @@ def get_competition_submissions_by_team_and_problem(competition_id: int, individ
         })
 
 @app.get("/competitions/{competition_id}/scoreboard")
-def get_competition_scoreboard(competition_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
-    token: Token = decode_token(authorization)
+def get_competition_scoreboard(competition_id: int, authorization: Annotated[str | None, Header()] = None) -> JSONResponse:
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
         cursor.execute("SELECT private FROM competitions WHERE id = %(id)s LIMIT 1", {'id': competition_id})
@@ -2381,24 +2380,27 @@ def get_competition_scoreboard(competition_id: int, authorization: Annotated[str
                 'problems': []
             })
             total_score: int = 0
+            only_none: bool = True
             for problem in problems:
                 cursor.execute("""
                     SELECT
                         MAX(submissions.total_score) AS score
                     FROM submissions
                     INNER JOIN competition_submissions ON submissions.id = competition_submissions.submission_id
-                    WHERE competition_submissions.team_id = %(team_id)s AND submissions.problem_id = %(problem_id)s
-                """, {'team_id': team['id'], 'problem_id': problem['id']})
+                    INNER JOIN competitions ON competition_submissions.competition_id = competitions.id
+                    WHERE competitions.id = %(competition_id)s AND competition_submissions.team_id = %(team_id)s AND submissions.problem_id = %(problem_id)s AND submissions.time_sent BETWEEN competitions.start_time AND competitions.end_time
+                """, {'competition_id': competition_id, 'team_id': team['id'], 'problem_id': problem['id']})
                 score: Any = cursor.fetchone()
                 if score is None:
-                    score = 0
+                    score = {'score': None}
                 results[-1]['problems'].append({
                     'id': problem['id'],
                     'name': problem['name'],
                     'best_score': score['score']
                 })
-                total_score += score['score']
-            results[-1]['total_score'] = total_score
+                total_score += 0 if score['score'] is None else score['score']
+                only_none = only_none and score['score'] is None
+            results[-1]['total_score'] = None if only_none else total_score
         return JSONResponse({
-            'participants': sorted(results, key=lambda x: x['total_score'], reverse=True)
+            'participants': sorted(results, key=lambda x: -1 if x['total_score'] is None else x['total_score'], reverse=True)
         })
