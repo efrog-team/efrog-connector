@@ -1166,7 +1166,7 @@ def get_submission(submission_id: int, authorization: Annotated[str | None, Head
                 LIMIT 1
             """, {'submission_id': submission_id})
             submission: Any = cursor.fetchone()
-            submission['realime_link'] = f"ws://localhost:8000/submissions/{submission_id}/realtime"
+            submission['realime_link'] = f"ws://{config['API_DOMAIN']}/submissions/{submission_id}/realtime"
             return JSONResponse(submission, status_code=202)
 
 @app.websocket("/submissions/{submission_id}/realtime")
@@ -1192,7 +1192,7 @@ async def websocket_endpoint_submissions(websocket: WebSocket, submission_id: in
         await websocket.send_text(dumps({
             'type': 'message',
             'status': 404,
-            'message': f"There is no submission testing with such id. Try to access: GET {config['API_URL']}/submissions/{submission_id}"
+            'message': f"There is no submission testing with such id. Try to access: GET http{'' if config['API_DOMAIN'] is not None and config['API_DOMAIN'][:config['API_DOMAIN'].find(':')] == 'localhost' else 's'}://{config['API_DOMAIN']}/submissions/{submission_id}"
         }))
     await websocket.close()
 
@@ -2235,7 +2235,7 @@ def get_competition_submission(competition_id: int, submission_id: int, authoriz
                 LIMIT 1
             """, {'submission_id': submission_id})
             submission: Any = cursor.fetchone()
-            submission['realime_link'] = f"ws://localhost:8000/submissions/{submission_id}/realtime"
+            submission['realime_link'] = f"ws://{config['API_DOMAIN']}/submissions/{submission_id}/realtime"
             return JSONResponse(submission, status_code=202)
 
 @app.get("/competitions/{competition_id}/participants/{individuals_or_teams}/{username_or_team_name}/submissions/public")
