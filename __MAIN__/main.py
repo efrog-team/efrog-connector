@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from models import UserRequest, UserToken, UserRequestUpdate, UserVerifyEmail, UserResetPassword, TeamRequest, TeamRequestUpdate, TeamMemberRequest, ProblemRequest, ProblemRequestUpdate, TestCaseRequest, TestCaseRequestUpdate, SubmissionRequest, DebugRequest, DebugRequestMany, CompetitionRequest, CompetitionRequestUpdate, CompetitionParticipantRequest, CompetitionProblemsRequest, ActivateOrDeactivate, CoachOrContestant, ConfirmOrDecline, PrivateOrPublic, OpenedOrClosed, IndividualsOrTeams, AuthoredOrParticipated
 from mysql.connector.abstracts import MySQLCursorAbstract
 from mysql.connector.errors import IntegrityError
-from config import email_config, database_config
+from config import config, email_config, database_config
 from connection_cursor import ConnectionCursor
 from security.hash import hash_hex
 from security.jwt import encode_token, Token, decode_token
@@ -1192,7 +1192,7 @@ async def websocket_endpoint_submissions(websocket: WebSocket, submission_id: in
         await websocket.send_text(dumps({
             'type': 'message',
             'status': 404,
-            'message': f"There is no submission testing with such id. Try to access: GET http://localhost:8000/submissions/{submission_id}"
+            'message': f"There is no submission testing with such id. Try to access: GET {config['API_URL']}/submissions/{submission_id}"
         }))
     await websocket.close()
 
