@@ -641,7 +641,7 @@
         * checked: boolean
         * realime_link: string (link)
 
-* ### WS "/submissions/{submission_id}/realtime" — realtime results of submission
+* ### WS "/ws/submissions/{submission_id}/realtime" — realtime results of submission
     * Each message from the server:
         * type: string (result, totals or  message)
     * Type result:
