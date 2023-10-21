@@ -1166,7 +1166,7 @@ def get_submission(submission_id: int, authorization: Annotated[str | None, Head
                 LIMIT 1
             """, {'submission_id': submission_id})
             submission: Any = cursor.fetchone()
-            submission['realime_link'] = f"ws://{config['API_DOMAIN']}/submissions/{submission_id}/realtime"
+            submission['realime_link'] = f"ws{'' if config['API_DOMAIN'] is not None and config['API_DOMAIN'][:config['API_DOMAIN'].find(':')] == 'localhost' else 's'}://{config['API_DOMAIN']}/submissions/{submission_id}/realtime"
             return JSONResponse(submission, status_code=202)
 
 @app.websocket("/submissions/{submission_id}/realtime")
@@ -2235,7 +2235,7 @@ def get_competition_submission(competition_id: int, submission_id: int, authoriz
                 LIMIT 1
             """, {'submission_id': submission_id})
             submission: Any = cursor.fetchone()
-            submission['realime_link'] = f"ws://{config['API_DOMAIN']}/submissions/{submission_id}/realtime"
+            submission['realime_link'] = f"ws{'' if config['API_DOMAIN'] is not None and config['API_DOMAIN'][:config['API_DOMAIN'].find(':')] == 'localhost' else 's'}://{config['API_DOMAIN']}/submissions/{submission_id}/realtime"
             return JSONResponse(submission, status_code=202)
 
 @app.get("/competitions/{competition_id}/participants/{individuals_or_teams}/{username_or_team_name}/submissions/public")
