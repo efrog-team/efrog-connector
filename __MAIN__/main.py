@@ -2384,7 +2384,7 @@ def get_competition_scoreboard(competition_id: int, authorization: Annotated[str
             for problem in problems:
                 cursor.execute("""
                     SELECT
-                        MAX(submissions.total_score) AS score
+                        MAX(submissions.correct_score) AS score
                     FROM submissions
                     INNER JOIN competition_submissions ON submissions.id = competition_submissions.submission_id
                     INNER JOIN competitions ON competition_submissions.competition_id = competitions.id
