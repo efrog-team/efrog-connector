@@ -639,7 +639,7 @@
         * language_version: string
         * time_sent: string (in the form of datetime %Y-%m-%d %H:%M:%S)
         * checked: boolean
-        * realime_link: string (link)
+        * realtime_link: string (link)
 
 * ### WS "/ws/submissions/{submission_id}/realtime" — realtime results of submission
     * Each message from the server:
@@ -1223,7 +1223,7 @@
         * language_version: string
         * time_sent: string (in the form of datetime %Y-%m-%d %H:%M:%S)
         * checked: boolean
-        * realime_link: string (link)
+        * realtime_link: string (link)
 
 * ### GET "/competitions/{competition_id}/participants/individuals/{username_or_team_name}/submissions/public" — get public data about all individual participant's submissions from a competition
     * Request headers:

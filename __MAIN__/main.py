@@ -1166,7 +1166,7 @@ def get_submission(submission_id: int, authorization: Annotated[str | None, Head
                 LIMIT 1
             """, {'submission_id': submission_id})
             submission: Any = cursor.fetchone()
-            submission['realime_link'] = f"ws{'' if config['API_DOMAIN'] is not None and config['API_DOMAIN'][:config['API_DOMAIN'].find(':')] == 'localhost' else 's'}://{config['API_DOMAIN']}/ws/submissions/{submission_id}/realtime"
+            submission['realtime_link'] = f"ws{'' if config['API_DOMAIN'] is not None and config['API_DOMAIN'][:config['API_DOMAIN'].find(':')] == 'localhost' else 's'}://{config['API_DOMAIN']}/ws/submissions/{submission_id}/realtime"
             return JSONResponse(submission, status_code=202)
 
 @app.websocket("/ws/submissions/{submission_id}/realtime")
@@ -1889,33 +1889,26 @@ def post_competition_problem(competition_id: int, problem: CompetitionProblemsRe
     return JSONResponse({})
 
 @app.get("/competitions/{competition_id}/problems/{problem_id}")
-def get_competition_problem(competition_id: int, problem_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+def get_competition_problem(competition_id: int, problem_id: int, authorization: Annotated[str | None, Header()] = None) -> JSONResponse:
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
         cursor.execute("SELECT author_user_id, private, IF(NOW() > start_time, 1, 0) AS started, IF(NOW() > end_time, 1, 0) AS ended FROM competitions WHERE id = %(competition_id)s LIMIT 1", {'competition_id': competition_id})
         competition: Any = cursor.fetchone()
         if competition is None:
             raise HTTPException(status_code=404, detail="Competition does not exist")
-        if competition['private']:
+        if not competition['started']:
             token: Token = decode_token(authorization)
             if token.id != competition['author_user_id']:
-                if not competition['started']:
-                    raise HTTPException(status_code=403, detail="You do not have permission to view problems of this competition")
-                cursor.execute("""
-                    SELECT 1
-                    FROM team_members
-                    INNER JOIN competition_participants ON team_members.team_id = competition_participants.team_id
-                    WHERE competition_participants.competition_id = %(id)s AND competition_participants.author_confirmed = 1 AND team_members.member_user_id = %(user_id)s AND team_members.confirmed = 1 AND team_members.coach = 0
-                    LIMIT 1
-                """, {'id': competition_id, 'user_id': token.id})
-                if cursor.fetchone() is None:
-                    if not competition['ended']:
-                        raise HTTPException(status_code=403, detail="You do not have permission to view problems of this competition")
+                raise HTTPException(status_code=403, detail="You do not have permission to view problems of this competition")
+        else:
+            if not competition['ended'] or competition['private']:
+                token: Token = decode_token(authorization)
+                if token.id != competition['author_user_id']:
                     cursor.execute("""
                         SELECT 1
                         FROM team_members
                         INNER JOIN competition_participants ON team_members.team_id = competition_participants.team_id
-                        WHERE competition_participants.competition_id = %(id)s AND competition_participants.author_confirmed = 1 AND team_members.member_user_id = %(user_id)s AND team_members.confirmed = 1
+                        WHERE competition_participants.competition_id = %(id)s AND competition_participants.author_confirmed = 1 AND team_members.member_user_id = %(user_id)s AND team_members.confirmed = 1 AND team_members.coach = 0
                         LIMIT 1
                     """, {'id': competition_id, 'user_id': token.id})
                     if cursor.fetchone() is None:
@@ -1952,33 +1945,26 @@ def get_competition_problem(competition_id: int, problem_id: int, authorization:
         return JSONResponse(problem)
 
 @app.get("/competitions/{competition_id}/problems")
-def get_competition_problems(competition_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+def get_competition_problems(competition_id: int, authorization: Annotated[str | None, Header()] = None) -> JSONResponse:
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
-        cursor.execute("SELECT author_user_id, private, IF(NOW() > start_time, 1, 0) AS started FROM competitions WHERE id = %(competition_id)s LIMIT 1", {'competition_id': competition_id})
+        cursor.execute("SELECT author_user_id, private, IF(NOW() > start_time, 1, 0) AS started, IF(NOW() > end_time, 1, 0) AS ended FROM competitions WHERE id = %(competition_id)s LIMIT 1", {'competition_id': competition_id})
         competition: Any = cursor.fetchone()
         if competition is None:
             raise HTTPException(status_code=404, detail="Competition does not exist")
-        if competition['private']:
+        if not competition['started']:
             token: Token = decode_token(authorization)
             if token.id != competition['author_user_id']:
-                if not competition['started']:
-                    raise HTTPException(status_code=403, detail="You do not have permission to view problems of this competition")
-                cursor.execute("""
-                    SELECT 1
-                    FROM team_members
-                    INNER JOIN competition_participants ON team_members.team_id = competition_participants.team_id
-                    WHERE competition_participants.competition_id = %(id)s AND competition_participants.author_confirmed = 1 AND team_members.member_user_id = %(user_id)s AND team_members.confirmed = 1 AND team_members.coach = 0
-                    LIMIT 1
-                """, {'id': competition_id, 'user_id': token.id})
-                if cursor.fetchone() is None:
-                    if not competition['ended']:
-                        raise HTTPException(status_code=403, detail="You do not have permission to view problems of this competition")
+                raise HTTPException(status_code=403, detail="You do not have permission to view problems of this competition")
+        else:
+            if not competition['ended'] or competition['private']:
+                token: Token = decode_token(authorization)
+                if token.id != competition['author_user_id']:
                     cursor.execute("""
                         SELECT 1
                         FROM team_members
                         INNER JOIN competition_participants ON team_members.team_id = competition_participants.team_id
-                        WHERE competition_participants.competition_id = %(id)s AND competition_participants.author_confirmed = 1 AND team_members.member_user_id = %(user_id)s AND team_members.confirmed = 1
+                        WHERE competition_participants.competition_id = %(id)s AND competition_participants.author_confirmed = 1 AND team_members.member_user_id = %(user_id)s AND team_members.confirmed = 1 AND team_members.coach = 0
                         LIMIT 1
                     """, {'id': competition_id, 'user_id': token.id})
                     if cursor.fetchone() is None:
@@ -2235,7 +2221,7 @@ def get_competition_submission(competition_id: int, submission_id: int, authoriz
                 LIMIT 1
             """, {'submission_id': submission_id})
             submission: Any = cursor.fetchone()
-            submission['realime_link'] = f"ws{'' if config['API_DOMAIN'] is not None and config['API_DOMAIN'][:config['API_DOMAIN'].find(':')] == 'localhost' else 's'}://{config['API_DOMAIN']}/ws/submissions/{submission_id}/realtime"
+            submission['realtime_link'] = f"ws{'' if config['API_DOMAIN'] is not None and config['API_DOMAIN'][:config['API_DOMAIN'].find(':')] == 'localhost' else 's'}://{config['API_DOMAIN']}/ws/submissions/{submission_id}/realtime"
             return JSONResponse(submission, status_code=202)
 
 @app.get("/competitions/{competition_id}/participants/{individuals_or_teams}/{username_or_team_name}/submissions/public")
