@@ -1319,7 +1319,7 @@ def get_submissions_by_problem(problem_id: int, authorization: Annotated[str | N
             'submissions': cursor.fetchall()
         })
 
-@app.delete("/problems/{problem_id}/submissions")
+@app.delete("/problems/{problem_id}/submissions/authors")
 def delete_problem_submissions(problem_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
@@ -1328,21 +1328,19 @@ def delete_problem_submissions(problem_id: int, authorization: Annotated[str | N
         problem: Any = cursor.fetchone()
         if problem is None:
             raise HTTPException(status_code=404, detail="Problem does not exist")
-        if not problem['private']:
-            raise HTTPException(status_code=403, detail="You cannot delete submissions on public problem")
         if problem['author_user_id'] != token.id:
             raise HTTPException(status_code=403, detail="You are not the author of this problem")
         cursor.execute("""
             DELETE submission_results
             FROM submission_results
             INNER JOIN submissions ON submission_results.submission_id = submissions.id
-            WHERE submissions.problem_id = %(problem_id)s
-        """, {'problem_id': problem_id})
+            WHERE submissions.problem_id = %(problem_id)s AND submissions.author_user_id = %(author_user_id)s
+        """, {'problem_id': problem_id, 'author_user_id': token.id})
         cursor.execute("""
             DELETE submissions
             FROM submissions
-            WHERE problem_id = %(problem_id)s
-        """, {'problem_id': problem_id})
+            WHERE problem_id = %(problem_id)s AND author_user_id = %(author_user_id)s
+        """, {'problem_id': problem_id, 'author_user_id': token.id})
     return JSONResponse({})
 
 def run_debug(debug_submission_id: int, debug_language: str, debug_code: str, debug_inputs: list[str]) -> list[dict[str, str | int]]:

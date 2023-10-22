@@ -748,7 +748,7 @@
             * total_verdict: string
         } ]
 
-* ### DELETE "/problems/{problem_id}/submissions" — delete all submissions on a private problem
+* ### DELETE "/problems/{problem_id}/submissions/authors" — delete all author's submissions on a problem
     * Request headers:
         * Authroization: string (access token)
     * Request parameters:
