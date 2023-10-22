@@ -709,7 +709,7 @@
             * total_verdict: string
         } ]
 
-* ### GET "/users/{username}/submissions/public/problems/{problem_id}" — get public data about all user's submissions
+* ### GET "/users/{username}/submissions/public/problems/{problem_id}" — get public data about all user's submissions on a problem
     * Request headers:
         * empty
     * Request parameters:
@@ -728,6 +728,35 @@
             * time_sent: string (in the form of date %Y-%m-%d %H:%M:%S)
             * total_verdict: string
         } ]
+
+* ### GET "/problems/{problem_id}/submissions/public" — get public data about all submission on a problem
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * problem_id: integer
+    * Request body:
+        * empty
+    * Response body:
+        * submissions: array[ {
+            * id: integer
+            * author_user_username: string
+            * problem_id: integer
+            * problem_name: string
+            * language_name: string
+            * language_version: string
+            * time_sent: string (in the form of date %Y-%m-%d %H:%M:%S)
+            * total_verdict: string
+        } ]
+
+* ### DELETE "/problems/{problem_id}/submissions" — delete all submissions on a private problem
+    * Request headers:
+        * Authroization: string (access token)
+    * Request parameters:
+        * problem_id: integer
+    * Request body:
+        * empty
+    * Response body:
+        * empty
 
 * ### POST "/debug" — create a submission
     * Request headers:

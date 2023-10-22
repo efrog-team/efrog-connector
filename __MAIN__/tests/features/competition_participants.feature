@@ -5,7 +5,6 @@ Feature: Team members
         Then add the correct user to the database
         Then add the correct team to the database
         Then add another user to the database
-        Then add another team to the database
         Then add another another user to the database
         Then add the correct public competition to the database
         Then add the correct private competition to the database
@@ -119,7 +118,7 @@ Feature: Team members
 
         Given id of the correct private competition
         And put into params
-        Given name of another team
+        Given name of the correct team
         And a field name is renamed to username_or_team_name
         And a field individual is set to False
         And put into body
@@ -179,7 +178,7 @@ Feature: Team members
         Then gets status 200
     
     Scenario: Confirm participation as a team
-        Given username and password of another user
+        Given username and password of the correct user
         And put into body
         When makes POST request /token
         Then gets status 200
@@ -187,7 +186,7 @@ Feature: Team members
 
         Given id of the correct private competition
         And put into params
-        Given name of another team
+        Given name of the correct team
         And put into params
         When makes PUT request /competitions/{id}/participants/teams/{name}/confirm
         Then gets status 200
@@ -285,7 +284,7 @@ Feature: Team members
 
         Given id of the correct private competition
         And put into params
-        Given name of another team
+        Given name of the correct team
         And put into params
         When makes DELETE request /competitions/{id}/participants/teams/{name}
         Then gets status 200

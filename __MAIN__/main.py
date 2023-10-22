@@ -372,7 +372,11 @@ def delete_team(team_name: str, authorization: Annotated[str | None, Header()]) 
             INNER JOIN teams ON team_members.team_id = teams.id
             WHERE teams.name = BINARY %(name)s AND teams.owner_user_id = %(owner_user_id)s AND teams.individual = 0
         """, {'name': team_name, 'owner_user_id': token.id})
-        cursor.execute("DELETE FROM teams WHERE name = BINARY %(name)s AND individual = 0 AND owner_user_id = %(owner_user_id)s", {'name': team_name, 'owner_user_id': token.id})
+        cursor.execute("""
+            DELETE teams
+            FROM teams
+            WHERE name = BINARY %(name)s AND individual = 0 AND owner_user_id = %(owner_user_id)s
+        """, {'name': team_name, 'owner_user_id': token.id})
         if cursor.rowcount == 0:
             detect_error_teams(cursor, team_name, token.id, False, False)
     return JSONResponse({})
@@ -1282,6 +1286,65 @@ def get_submissions_public_by_user_and_problem(username: str, problem_id: int)->
             'submissions': cursor.fetchall()
         })
 
+@app.get("/problems/{problem_id}/submissions/public")
+def get_submissions_by_problem(problem_id: int, authorization: Annotated[str | None, Header()] = None)-> JSONResponse:
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("SELECT private, author_user_id FROM problems WHERE id = %(id)s LIMIT 1", {'id': problem_id})
+        problem: Any = cursor.fetchone()
+        if problem is None:
+            raise HTTPException(status_code=405, detail="Problem does not exist")
+        if problem['private']:
+            token: Token = decode_token(authorization)
+            if token.id != problem['author_user_id']:
+                raise HTTPException(status_code=403, detail="You are not the author of this private problem")
+        cursor.execute("""
+            SELECT 
+                submissions.id AS id,
+                users.username AS author_user_username,
+                problems.id AS problem_id,
+                problems.name AS problem_name,
+                languages.name AS language_name,
+                languages.version AS language_version,
+                submissions.time_sent AS time_sent,
+                verdicts.text AS total_verdict
+            FROM submissions
+            INNER JOIN users ON submissions.author_user_id = users.id
+            INNER JOIN problems ON submissions.problem_id = problems.id
+            INNER JOIN languages ON submissions.language_id = languages.id
+            INNER JOIN verdicts ON submissions.total_verdict_id = verdicts.id
+            WHERE problems.id = %(problem_id)s AND submissions.checked = 1
+        """, {'problem_id': problem_id})
+        return JSONResponse({
+            'submissions': cursor.fetchall()
+        })
+
+@app.delete("/problems/{problem_id}/submissions")
+def delete_problem_submissions(problem_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("SELECT author_user_id, private FROM problems WHERE id = %(problem_id)s LIMIT 1", {'problem_id': problem_id})
+        problem: Any = cursor.fetchone()
+        if problem is None:
+            raise HTTPException(status_code=404, detail="Problem does not exist")
+        if not problem['private']:
+            raise HTTPException(status_code=403, detail="You cannot delete submissions on public problem")
+        if problem['author_user_id'] != token.id:
+            raise HTTPException(status_code=403, detail="You are not the author of this problem")
+        cursor.execute("""
+            DELETE submission_results
+            FROM submission_results
+            INNER JOIN submissions ON submission_results.submission_id = submissions.id
+            WHERE submissions.problem_id = %(problem_id)s
+        """, {'problem_id': problem_id})
+        cursor.execute("""
+            DELETE submissions
+            FROM submissions
+            WHERE problem_id = %(problem_id)s
+        """, {'problem_id': problem_id})
+    return JSONResponse({})
+
 def run_debug(debug_submission_id: int, debug_language: str, debug_code: str, debug_inputs: list[str]) -> list[dict[str, str | int]]:
     create_files_result: CreateFilesResult = lib.create_files(debug_submission_id, debug_code, debug_language)
     results: list[dict[str, str | int]] = []
@@ -1643,7 +1706,11 @@ def delete_competition(competition_id: int, authorization: Annotated[str | None,
     with ConnectionCursor(database_config) as cursor:
         if not check_if_competition_can_be_edited(cursor, competition_id, authorization):
             raise HTTPException(status_code=403, detail="This competition cannot be edited or deleted")
-        cursor.execute("DELETE competitions FROM competitions WHERE id = %(competition_id)s AND author_user_id = %(author_user_id)s", {'competition_id': competition_id, 'author_user_id': token.id})
+        cursor.execute("""
+            DELETE competitions
+            FROM competitions
+            WHERE id = %(competition_id)s AND author_user_id = %(author_user_id)s
+        """, {'competition_id': competition_id, 'author_user_id': token.id})
         if cursor.rowcount == 0:
             detect_error_competitions(cursor, competition_id, token.id, False, False, False)
     return JSONResponse({})
