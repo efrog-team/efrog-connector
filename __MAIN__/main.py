@@ -563,9 +563,9 @@ def post_problem(problem: ProblemRequest, authorization: Annotated[str | None, H
         raise HTTPException(status_code=400, detail="Name is empty")
     if problem.statement == "":
         raise HTTPException(status_code=400, detail="Statement is empty")
-    if problem.time_restriction <= 0:
+    if problem.time_restriction <= 0 and problem.time_restriction > 10:
         raise HTTPException(status_code=400, detail="Time restriction is less or equal to 0")
-    if problem.memory_restriction <= 0:
+    if problem.memory_restriction <= 0 and problem.memory_restriction > 1024:
         raise HTTPException(status_code=400, detail="Memory restriction is less or equal to 0")
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
@@ -729,10 +729,10 @@ def put_problem(problem_id: int, problem: ProblemRequestUpdate, authorization: A
     if problem.notes is not None and problem.notes != '':
         update_set += "notes = %(notes)s, "
         update_dict['notes'] = problem.notes
-    if problem.time_restriction is not None and problem.time_restriction > 0:
+    if problem.time_restriction is not None and problem.time_restriction > 0 and problem.time_restriction <= 10:
         update_set += "time_restriction = %(time_restriction)s, "
         update_dict['time_restriction'] = problem.time_restriction
-    if problem.memory_restriction is not None and problem.memory_restriction > 0:
+    if problem.memory_restriction is not None and problem.memory_restriction > 0 and problem.memory_restriction <= 1024:
         update_set += "memory_restriction = %(memory_restriction)s, "
         update_dict['memory_restriction'] = problem.memory_restriction
     if update_set == "":
@@ -753,6 +753,12 @@ def delete_problem(problem_id: int, authorization: Annotated[str | None, Header(
     with ConnectionCursor(database_config) as cursor:
         if not check_if_problem_can_be_edited(cursor, problem_id, authorization):
             raise HTTPException(status_code=403, detail="This problem cannot be edited or deleted")
+        cursor.execute("""
+            DELETE test_cases
+            FROM test_cases
+            INNER JOIN problems ON test_cases.problem_id = problems.id
+            WHERE problems.id = %(problem_id)s AND problems.author_user_id = %(author_user_id)s
+        """, {'problem_id': problem_id, 'author_user_id': token.id})
         cursor.execute("""
             DELETE problems
             FROM problems
@@ -1705,6 +1711,24 @@ def delete_competition(competition_id: int, authorization: Annotated[str | None,
         if not check_if_competition_can_be_edited(cursor, competition_id, authorization):
             raise HTTPException(status_code=403, detail="This competition cannot be edited or deleted")
         cursor.execute("""
+            DELETE competition_participants
+            FROM competition_participants
+            INNER JOIN competitions ON competition_participants.competition_id = competitions.id
+            WHERE competitions.id = %(competition_id)s AND competitions.author_user_id = %(author_user_id)s
+        """, {'competition_id': competition_id, 'author_user_id': token.id})
+        cursor.execute("""
+            DELETE competition_problems
+            FROM competition_problems
+            INNER JOIN competitions ON competition_problems.competition_id = competitions.id
+            WHERE competitions.id = %(competition_id)s AND competitions.author_user_id = %(author_user_id)s
+        """, {'competition_id': competition_id, 'author_user_id': token.id})
+        cursor.execute("""
+            DELETE competition_submissions
+            FROM competition_submissions
+            INNER JOIN competitions ON competition_submissions.competition_id = competitions.id
+            WHERE competitions.id = %(competition_id)s AND competitions.author_user_id = %(author_user_id)s
+        """, {'competition_id': competition_id, 'author_user_id': token.id})
+        cursor.execute("""
             DELETE competitions
             FROM competitions
             WHERE id = %(competition_id)s AND author_user_id = %(author_user_id)s
@@ -2327,8 +2351,7 @@ def get_competition_submissions_by_team(competition_id: int, individuals_or_team
             INNER JOIN languages ON submissions.language_id = languages.id
             INNER JOIN verdicts ON submissions.total_verdict_id = verdicts.id
             INNER JOIN competition_submissions ON submissions.id = competition_submissions.submission_id
-            INNER JOIN competition_participants ON competition_submissions.competition_id = competition_participants.competition_id
-            WHERE competition_submissions.competition_id = %(competition_id)s AND competition_participants.team_id = %(team_id)s AND submissions.checked = 1
+            WHERE competition_submissions.competition_id = %(competition_id)s AND competition_submissions.team_id = %(team_id)s AND submissions.checked = 1
         """, {'competition_id': competition_id, 'team_id': team['id']})
         return JSONResponse({
             'submissions': cursor.fetchall()
@@ -2376,8 +2399,7 @@ def get_competition_submissions_by_team_and_problem(competition_id: int, individ
             INNER JOIN languages ON submissions.language_id = languages.id
             INNER JOIN verdicts ON submissions.total_verdict_id = verdicts.id
             INNER JOIN competition_submissions ON submissions.id = competition_submissions.submission_id
-            INNER JOIN competition_participants ON competition_submissions.competition_id = competition_participants.competition_id
-            WHERE competition_submissions.competition_id = %(competition_id)s AND competition_participants.team_id = %(team_id)s AND problems.id = %(problem_id)s AND submissions.checked = 1
+            WHERE competition_submissions.competition_id = %(competition_id)s AND competition_submissions.team_id = %(team_id)s AND problems.id = %(problem_id)s AND submissions.checked = 1
         """, {'competition_id': competition_id, 'team_id': team['id'], 'problem_id': problem_id})
         return JSONResponse({
             'submissions': cursor.fetchall()
