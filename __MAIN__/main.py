@@ -952,7 +952,7 @@ def check_submission(submission_id: int, problem_id: int, code: str, language: s
         else:
             cursor.execute("""
                 UPDATE submissions
-                SET compiled = 1, compilation_details = %(compilation_details)s
+                SET compiled = 0, compilation_details = %(compilation_details)s
                 WHERE id = %(submission_id)s
             """, {'submission_id': submission_id, 'compilation_details': create_files_result.description})
         cursor.execute("""
