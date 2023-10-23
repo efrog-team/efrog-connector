@@ -2050,7 +2050,6 @@ def get_competition_problems(competition_id: int, authorization: Annotated[str |
             INNER JOIN problems ON competition_problems.problem_id = problems.id
             INNER JOIN users ON problems.author_user_id = users.id
             WHERE competition_problems.competition_id = %(competition_id)s
-            LIMIT 1
         """, {'competition_id': competition_id})
         problems: list[Any] = list(cursor.fetchall())
         for i in range(0, len(problems)):
