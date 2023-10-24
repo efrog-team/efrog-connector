@@ -24,6 +24,8 @@ current_websockets: dict[int, CurrentWebsocket] = {}
 
 debugging_queue: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=2)
 
+testing_users: dict[int, bool] = {}
+
 lib: Library = Library()
 
 app: FastAPI = FastAPI()
@@ -955,7 +957,7 @@ def delete_test_case(problem_id: int, test_case_id: int, authorization: Annotate
             detect_error_problems(cursor, problem_id, token.id, False, False, False)
     return JSONResponse({})
 
-def check_submission(submission_id: int, problem_id: int, code: str, language: str, no_realtime: bool) -> None:
+def check_submission(submission_id: int, problem_id: int, code: str, language: str, no_realtime: bool, user_id: int) -> None:
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
         create_files_result: CreateFilesResult = lib.create_files(submission_id, code, language)
@@ -1041,6 +1043,7 @@ def check_submission(submission_id: int, problem_id: int, code: str, language: s
             current_websockets[submission_id].safe_set_flag()
             if current_websockets[submission_id].websocket is None and current_websockets[submission_id].flag is None:
                 del current_websockets[submission_id]
+    testing_users.pop(user_id, None)
 
 @app.post("/submissions")
 def submit(submission: SubmissionRequest, authorization: Annotated[str | None, Header()], no_realtime:  bool = False) -> JSONResponse:
@@ -1058,6 +1061,9 @@ def submit(submission: SubmissionRequest, authorization: Annotated[str | None, H
         language: Any = cursor.fetchone()
         if language is None:
             raise HTTPException(status_code=404, detail="Language does not exist")
+        if testing_users.get(token.id) is not None:
+            raise HTTPException(status_code=403, detail="You are already have a testing submission or debug")
+        testing_users[token.id] = True
         cursor.execute("""
             INSERT INTO submissions (author_user_id, problem_id, code, language_id, time_sent, checked, compiled, compilation_details, correct_score, total_score, total_verdict_id)
             VALUES (%(author_user_id)s, %(problem_id)s, %(code)s, %(language_id)s, NOW(), 0, 0, '', 0, 0, 1)
@@ -1067,12 +1073,12 @@ def submit(submission: SubmissionRequest, authorization: Annotated[str | None, H
             raise HTTPException(status_code=500, detail="Internal server error")
         if not no_realtime:
             current_websockets[submission_id] = CurrentWebsocket(None, None, [])
-            checking_queue.submit(check_submission, submission_id, submission.problem_id, submission.code, f"{submission.language_name} ({submission.language_version})", no_realtime)
+            checking_queue.submit(check_submission, submission_id, submission.problem_id, submission.code, f"{submission.language_name} ({submission.language_version})", no_realtime, token.id)
             return JSONResponse({
                 'submission_id': submission_id
             })
         else:
-            checking_queue.submit(check_submission, submission_id, submission.problem_id, submission.code, f"{submission.language_name} ({submission.language_version})", no_realtime).result()
+            checking_queue.submit(check_submission, submission_id, submission.problem_id, submission.code, f"{submission.language_name} ({submission.language_version})", no_realtime, token.id).result()
             cursor.execute("""
                 SELECT
                     submissions.id AS id,
@@ -1365,7 +1371,7 @@ def delete_problem_submissions(problem_id: int, authorization: Annotated[str | N
         """, {'problem_id': problem_id, 'author_user_id': token.id})
     return JSONResponse({})
 
-def run_debug(debug_submission_id: int, debug_language: str, debug_code: str, debug_inputs: list[str]) -> list[dict[str, str | int]]:
+def run_debug(debug_submission_id: int, debug_language: str, debug_code: str, debug_inputs: list[str], user_id: int) -> list[dict[str, str | int]]:
     create_files_result: CreateFilesResult = lib.create_files(debug_submission_id, debug_code, debug_language)
     results: list[dict[str, str | int]] = []
     for index, debug_input in enumerate(debug_inputs):
@@ -1409,6 +1415,7 @@ def run_debug(debug_submission_id: int, debug_language: str, debug_code: str, de
                 'output': create_files_result.description
             })
     lib.delete_files(debug_submission_id)
+    testing_users.pop(user_id, None)
     return results
 
 @app.post("/debug")
@@ -1426,6 +1433,9 @@ def post_debug(debug: DebugRequest, authorization: Annotated[str | None, Header(
         language: Any = cursor.fetchone()
         if language is None:
             raise HTTPException(status_code=404, detail="Language does not exist")
+        if testing_users.get(token.id) is not None:
+            raise HTTPException(status_code=403, detail="You are already have a testing submission or debug")
+        testing_users[token.id] = True
         cursor.execute("""
             INSERT INTO debug (author_user_id, number_of_inputs, time_sent)
             VALUES (%(author_user_id)s, 1, NOW())
@@ -1433,7 +1443,7 @@ def post_debug(debug: DebugRequest, authorization: Annotated[str | None, Header(
         debug_submission_id: int | None = cursor.lastrowid
         if debug_submission_id is None:
             raise HTTPException(status_code=500, detail="Internal server error")
-        return JSONResponse(debugging_queue.submit(run_debug, debug_submission_id, f"{debug.language_name} ({debug.language_version})", debug.code, [debug.input]).result()[0])
+        return JSONResponse(debugging_queue.submit(run_debug, debug_submission_id, f"{debug.language_name} ({debug.language_version})", debug.code, [debug.input], token.id).result()[0])
 
 @app.post("/debug/many")
 def post_debug_many(debug: DebugRequestMany, authorization: Annotated[str | None, Header()]) -> JSONResponse:
@@ -1450,6 +1460,9 @@ def post_debug_many(debug: DebugRequestMany, authorization: Annotated[str | None
         language: Any = cursor.fetchone()
         if language is None:
             raise HTTPException(status_code=404, detail="Language does not exist")
+        if testing_users.get(token.id) is not None:
+            raise HTTPException(status_code=403, detail="You are already have a testing submission or debug")
+        testing_users[token.id] = True
         cursor.execute("""
             INSERT INTO debug (author_user_id, number_of_inputs, time_sent)
             VALUES (%(author_user_id)s, %(number_of_inputs)s, NOW())
@@ -1458,7 +1471,7 @@ def post_debug_many(debug: DebugRequestMany, authorization: Annotated[str | None
         if debug_submission_id is None:
             raise HTTPException(status_code=500, detail="Internal server error")
         return JSONResponse({
-            'results': debugging_queue.submit(run_debug, debug_submission_id, f"{debug.language_name} ({debug.language_version})", debug.code, debug.inputs).result()
+            'results': debugging_queue.submit(run_debug, debug_submission_id, f"{debug.language_name} ({debug.language_version})", debug.code, debug.inputs, token.id).result()
         })
 
 def convert_and_validate_datetime(date: str, field_name: str = "") -> datetime:
@@ -2177,6 +2190,9 @@ def competition_submit(competition_id: int, submission: SubmissionRequest, autho
         cursor.execute("SELECT 1 FROM competition_problems WHERE competition_id = %(competition_id)s AND problem_id = %(problem_id)s LIMIT 1", {'competition_id': competition_id, 'problem_id': submission.problem_id})
         if cursor.fetchone() is None:
             raise HTTPException(status_code=403, detail="Problem is not added to this competition")
+        if testing_users.get(token.id) is not None:
+            raise HTTPException(status_code=403, detail="You are already have a testing submission or debug")
+        testing_users[token.id] = True
         cursor.execute("""
             INSERT INTO submissions (author_user_id, problem_id, code, language_id, time_sent, checked, compiled, compilation_details, correct_score, total_score, total_verdict_id)
             VALUES (%(author_user_id)s, %(problem_id)s, %(code)s, %(language_id)s, NOW(), 0, 0, '', 0, 0, 1)
@@ -2190,12 +2206,12 @@ def competition_submit(competition_id: int, submission: SubmissionRequest, autho
         """, {'competition_id': competition_id, 'submission_id': submission_id, 'team_id': team['id']})
         if not no_realtime:
             current_websockets[submission_id] = CurrentWebsocket(None, None, [])
-            checking_queue.submit(check_submission, submission_id, submission.problem_id, submission.code, f"{submission.language_name} ({submission.language_version})", no_realtime)
+            checking_queue.submit(check_submission, submission_id, submission.problem_id, submission.code, f"{submission.language_name} ({submission.language_version})", no_realtime, token.id)
             return JSONResponse({
                 'submission_id': submission_id
             })
         else:
-            checking_queue.submit(check_submission, submission_id, submission.problem_id, submission.code, f"{submission.language_name} ({submission.language_version})", no_realtime).result()
+            checking_queue.submit(check_submission, submission_id, submission.problem_id, submission.code, f"{submission.language_name} ({submission.language_version})", no_realtime, token.id).result()
             cursor.execute("""
                 SELECT
                     submissions.id AS id,
