@@ -48,6 +48,16 @@ def root() -> JSONResponse:
         'dictionary': {}
     })
 
+def send_verification_token(id: int, username: str, email: str) -> None:
+    token: str = encode_token(id, username, 'email_verification')
+    msg = MIMEText(f"Your email verification token is:\n\n{token}\n\n(You can put it here: https://auth.efrog.pp.ua/en/verify-email)\n\n\nВаш токен для верифікації пошти:\n\n{token}\n\n(Ви можете його ввести тут: https://auth.efrog.pp.ua/uk/verify-email)")
+    msg['Subject'] = "Email verification"
+    msg['From'] = email_config['EMAIL']
+    msg['To'] = email
+    with SMTP_SSL('smtp.gmail.com', 465) as smtp_server:
+        smtp_server.login(email_config['EMAIL'], email_config['EMAIL_PASSWORD'])
+        smtp_server.sendmail(email_config['EMAIL'], email, msg.as_string())
+
 @app.post("/users")
 def post_user(user: UserRequest, do_not_send_verification_token: bool = False) -> JSONResponse:
     if user.username == "":
@@ -70,14 +80,20 @@ def post_user(user: UserRequest, do_not_send_verification_token: bool = False) -
         if user_id is None:
             raise HTTPException(status_code=500, detail="Internal Server Error")
         if not do_not_send_verification_token:
-            token: str = encode_token(user_id, user.username, 'email_verification')
-            msg = MIMEText(f"Your email verification token is:\n\n{token}\n\nВаш токен для верифікації пошти:\n\n{token}\n\n")
-            msg['Subject'] = "Email verification"
-            msg['From'] = email_config['EMAIL']
-            msg['To'] = user.email
-            with SMTP_SSL('smtp.gmail.com', 465) as smtp_server:
-                smtp_server.login(email_config['EMAIL'], email_config['EMAIL_PASSWORD'])
-                smtp_server.sendmail(email_config['EMAIL'], user.email, msg.as_string())
+            send_verification_token(user_id, user.username, user.email)
+    return JSONResponse({})
+
+@app.get("/users/email/{email}/resend-token")
+def get_email_resend_token(email: str) -> JSONResponse:
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        cursor.execute("SELECT id, username, email, verified FROM users WHERE email = BINARY %(email)s LIMIT 1", {'email': email})
+        user_db: Any = cursor.fetchone()
+        if user_db is None:
+            raise HTTPException(status_code=401, detail="User does not exist")
+        if user_db['verified']:
+            raise HTTPException(status_code=409, detail="Email is already verified")
+        send_verification_token(user_db['id'], user_db['username'], email)
     return JSONResponse({})
 
 @app.post("/users/email/verify")

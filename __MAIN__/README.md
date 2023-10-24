@@ -25,6 +25,16 @@
     * Response body:
         * empty
 
+* ### GET "/users/email/{email}/resend-token" — resend email verification token
+    * Request headers:
+        * empty
+    * Request parameters:
+        * email: string
+    * Request body:
+        * empty
+    * Response body:
+        * empty
+
 * ### POST "/users/email/verify" — verify email
     * Request headers:
         * empty

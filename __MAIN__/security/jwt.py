@@ -13,7 +13,7 @@ def encode_token(id: int, username: str, use: str = 'authroization') -> str:
         raise HTTPException(status_code=500, detail="Internal Server Error")
     else:
         try:
-            return jwt.encode({'id': id, 'username': username, 'use': use, 'exp': datetime.datetime.utcnow() + datetime.timedelta(days=365) if use == 'authroization' else datetime.datetime.utcnow() + datetime.timedelta(minutes=10)}, config['JWT_SECRET'], algorithm='HS256')
+            return jwt.encode({'id': id, 'username': username, 'use': use, 'exp': datetime.datetime.utcnow() + datetime.timedelta(days=365) if use == 'authroization' else datetime.datetime.utcnow() + datetime.timedelta(days=1)}, config['JWT_SECRET'], algorithm='HS256')
         except:
             raise HTTPException(status_code=500, detail="Internal Server Error")
 
