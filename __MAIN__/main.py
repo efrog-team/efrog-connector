@@ -2142,7 +2142,6 @@ def competition_submit(competition_id: int, submission: SubmissionRequest, autho
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
-        detect_error_problems(cursor, submission.problem_id, token.id, False, True, True)
         cursor.execute("SELECT id FROM languages WHERE name = %(name)s AND version = %(version)s AND supported = 1 LIMIT 1", {'name': submission.language_name, 'version': submission.language_version})
         language: Any = cursor.fetchone()
         if language is None:
@@ -2172,6 +2171,9 @@ def competition_submit(competition_id: int, submission: SubmissionRequest, autho
         team: Any = cursor.fetchone()
         if team is None:
             raise HTTPException(status_code=403, detail="You are not a confirmed member of this competition")
+        cursor.execute("SELECT 1 FROM problems WHERE id = %(problem_id)s LIMIT 1", {'problem_id': submission.problem_id})
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Problem does not exist")
         cursor.execute("SELECT 1 FROM competition_problems WHERE competition_id = %(competition_id)s AND problem_id = %(problem_id)s LIMIT 1", {'competition_id': competition_id, 'problem_id': submission.problem_id})
         if cursor.fetchone() is None:
             raise HTTPException(status_code=403, detail="Problem is not added to this competition")
