@@ -1062,7 +1062,7 @@ def submit(submission: SubmissionRequest, authorization: Annotated[str | None, H
         if language is None:
             raise HTTPException(status_code=404, detail="Language does not exist")
         if testing_users.get(token.id) is not None:
-            raise HTTPException(status_code=403, detail="You are already have a testing submission or debug")
+            raise HTTPException(status_code=403, detail="You already have a testing submission or debug")
         testing_users[token.id] = True
         cursor.execute("""
             INSERT INTO submissions (author_user_id, problem_id, code, language_id, time_sent, checked, compiled, compilation_details, correct_score, total_score, total_verdict_id)
@@ -1434,7 +1434,7 @@ def post_debug(debug: DebugRequest, authorization: Annotated[str | None, Header(
         if language is None:
             raise HTTPException(status_code=404, detail="Language does not exist")
         if testing_users.get(token.id) is not None:
-            raise HTTPException(status_code=403, detail="You are already have a testing submission or debug")
+            raise HTTPException(status_code=403, detail="You already have a testing submission or debug")
         testing_users[token.id] = True
         cursor.execute("""
             INSERT INTO debug (author_user_id, number_of_inputs, time_sent)
@@ -1461,7 +1461,7 @@ def post_debug_many(debug: DebugRequestMany, authorization: Annotated[str | None
         if language is None:
             raise HTTPException(status_code=404, detail="Language does not exist")
         if testing_users.get(token.id) is not None:
-            raise HTTPException(status_code=403, detail="You are already have a testing submission or debug")
+            raise HTTPException(status_code=403, detail="You already have a testing submission or debug")
         testing_users[token.id] = True
         cursor.execute("""
             INSERT INTO debug (author_user_id, number_of_inputs, time_sent)
@@ -2191,7 +2191,7 @@ def competition_submit(competition_id: int, submission: SubmissionRequest, autho
         if cursor.fetchone() is None:
             raise HTTPException(status_code=403, detail="Problem is not added to this competition")
         if testing_users.get(token.id) is not None:
-            raise HTTPException(status_code=403, detail="You are already have a testing submission or debug")
+            raise HTTPException(status_code=403, detail="You already have a testing submission or debug")
         testing_users[token.id] = True
         cursor.execute("""
             INSERT INTO submissions (author_user_id, problem_id, code, language_id, time_sent, checked, compiled, compilation_details, correct_score, total_score, total_verdict_id)
