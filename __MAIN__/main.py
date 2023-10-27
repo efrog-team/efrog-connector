@@ -2443,13 +2443,13 @@ def get_competition_submissions_by_team_and_problem(competition_id: int, individ
 def get_competition_scoreboard(competition_id: int, authorization: Annotated[str | None, Header()] = None) -> JSONResponse:
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
-        cursor.execute("SELECT private FROM competitions WHERE id = %(id)s LIMIT 1", {'id': competition_id})
+        cursor.execute("SELECT author_user_id, private FROM competitions WHERE id = %(id)s LIMIT 1", {'id': competition_id})
         competition: Any = cursor.fetchone()
         if competition is None:
             raise HTTPException(status_code=404, detail="Competition does not exist")
         if competition['private']:
             token: Token = decode_token(authorization)
-            if competition['author_user_username'] != token.username:
+            if competition['author_user_id'] != token.id:
                 cursor.execute("""
                     SELECT 1
                     FROM team_members
