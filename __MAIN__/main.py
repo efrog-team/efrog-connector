@@ -207,6 +207,7 @@ def put_user(username: str, user: UserRequestUpdate, authorization: Annotated[st
                 raise HTTPException(status_code=400, detail="Username is too short")
             try:
                 cursor.execute("UPDATE users SET username = %(new_username)s WHERE username = BINARY %(username)s", {'new_username': user.username, 'username': username})
+                cursor.execute("UPDATE teams SET name = %(new_username)s WHERE name = BINARY %(username)s AND individual = 1", {'new_username': user.username, 'username': username})
             except IntegrityError:
                 cursor.execute("UPDATE users SET email = %(email)s WHERE username = BINARY %(username)s", {'email': user_db['email'], 'username': username})
                 cursor.execute("UPDATE users SET name = %(name)s WHERE username = BINARY %(username)s", {'name': user_db['name'], 'username': username})
