@@ -1018,7 +1018,6 @@ def check_submission(submission_id: int, problem_id: int, code: str, language: s
                         'verdict_text': verdict['text'],
                         'time_taken': test_result.time,
                         'cpu_time_taken': test_result.cpu_time,
-                        'virtual_memory_taken': test_result.virtual_memory,
                         'physical_memory_taken': test_result.physical_memory
                     }
                 })))
@@ -1115,7 +1114,6 @@ def submit(submission: SubmissionRequest, authorization: Annotated[str | None, H
                     verdicts.text AS verdict_text,
                     submission_results.time_taken AS time_taken,
                     submission_results.cpu_time_taken AS cpu_time_taken,
-                    submission_results.virtual_memory_taken AS virtual_memory_taken,
                     submission_results.physical_memory_taken AS physical_memory_taken
                 FROM submission_results
                 INNER JOIN test_cases ON submission_results.test_case_id = test_cases.id
@@ -1171,7 +1169,6 @@ def get_submission(submission_id: int, authorization: Annotated[str | None, Head
                     verdicts.text AS verdict_text,
                     submission_results.time_taken AS time_taken,
                     submission_results.cpu_time_taken AS cpu_time_taken,
-                    submission_results.virtual_memory_taken AS virtual_memory_taken,
                     submission_results.physical_memory_taken AS physical_memory_taken
                 FROM submission_results
                 INNER JOIN test_cases ON submission_results.test_case_id = test_cases.id
@@ -1385,7 +1382,6 @@ def run_debug(debug_submission_id: int, debug_language: str, debug_code: str, de
                     'verdict_text': 'OK',
                     'time_taken': debug_result.time,
                     'cpu_time_taken': debug_result.cpu_time,
-                    'virtual_memory_taken': debug_result.virtual_memory,
                     'physical_memory_taken': debug_result.physical_memory,
                     'output': debug_result.output
                 })
@@ -1404,7 +1400,6 @@ def run_debug(debug_submission_id: int, debug_language: str, debug_code: str, de
                     'verdict_text': verdict,
                     'time_taken': debug_result.time,
                     'cpu_time_taken': debug_result.cpu_time,
-                    'virtual_memory_taken': debug_result.virtual_memory,
                     'physical_memory_taken': debug_result.physical_memory,
                     'output': debug_result.output
                 })
@@ -1413,7 +1408,6 @@ def run_debug(debug_submission_id: int, debug_language: str, debug_code: str, de
                 'verdict_text': 'Compilation Error',
                 'time_taken': 0,
                 'cpu_time_taken': 0,
-                'virtual_memory_taken': 0,
                 'physical_memory_taken': 0,
                 'output': create_files_result.description
             })
@@ -2248,7 +2242,6 @@ def competition_submit(competition_id: int, submission: SubmissionRequest, autho
                     verdicts.text AS verdict_text,
                     submission_results.time_taken AS time_taken,
                     submission_results.cpu_time_taken AS cpu_time_taken,
-                    submission_results.virtual_memory_taken AS virtual_memory_taken,
                     submission_results.physical_memory_taken AS physical_memory_taken
                 FROM submission_results
                 INNER JOIN test_cases ON submission_results.test_case_id = test_cases.id
@@ -2316,7 +2309,6 @@ def get_competition_submission(competition_id: int, submission_id: int, authoriz
                     verdicts.text AS verdict_text,
                     submission_results.time_taken AS time_taken,
                     submission_results.cpu_time_taken AS cpu_time_taken,
-                    submission_results.virtual_memory_taken AS virtual_memory_taken,
                     submission_results.physical_memory_taken AS physical_memory_taken
                 FROM submission_results
                 INNER JOIN test_cases ON submission_results.test_case_id = test_cases.id
