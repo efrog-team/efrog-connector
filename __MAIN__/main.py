@@ -963,7 +963,7 @@ def delete_test_case(problem_id: int, test_case_id: int, authorization: Annotate
 def check_submission(submission_id: int, problem_id: int, code: str, language: str, no_realtime: bool, user_id: int) -> None:
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
-        create_files_result: CreateFilesResult = lib.create_files(submission_id, code, language)
+        create_files_result: CreateFilesResult = lib.create_files(submission_id, code, language, 1)
         if create_files_result.status == 0:
             cursor.execute("""
                 UPDATE submissions
@@ -1035,7 +1035,7 @@ def check_submission(submission_id: int, problem_id: int, code: str, language: s
                     'total_verdict': total_verdict[1]
                 }
             })))
-        lib.delete_files(submission_id)
+        lib.delete_files(submission_id, 1)
         cursor.execute("""
             UPDATE submissions
             SET checked = 1, correct_score = %(correct_score)s, total_score = %(total_score)s, total_verdict_id = %(total_verdict_id)s
@@ -1372,7 +1372,7 @@ def delete_problem_submissions(problem_id: int, authorization: Annotated[str | N
     return JSONResponse({})
 
 def run_debug(debug_submission_id: int, debug_language: str, debug_code: str, debug_inputs: list[str], user_id: int) -> list[dict[str, str | int]]:
-    create_files_result: CreateFilesResult = lib.create_files(debug_submission_id, debug_code, debug_language)
+    create_files_result: CreateFilesResult = lib.create_files(debug_submission_id, debug_code, debug_language, 0)
     results: list[dict[str, str | int]] = []
     for index, debug_input in enumerate(debug_inputs):
         if create_files_result.status == 0:
@@ -1411,7 +1411,7 @@ def run_debug(debug_submission_id: int, debug_language: str, debug_code: str, de
                 'physical_memory_taken': 0,
                 'output': create_files_result.description
             })
-    lib.delete_files(debug_submission_id)
+    lib.delete_files(debug_submission_id, 0)
     testing_users.pop(user_id, None)
     return results
 
