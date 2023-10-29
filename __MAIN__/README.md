@@ -58,7 +58,7 @@
 
 * ### GET "/users/me" — get an active user
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * empty
     * Request body:
@@ -82,7 +82,7 @@
 
 * ### PUT "/users/{username}" — update a user
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * username: string
     * Request body:
@@ -116,7 +116,7 @@
 
 * ### POST "/teams" — create a team
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * empty
     * Request body:
@@ -138,7 +138,7 @@
 
 * ### PUT "/teams/{team_name}" — update a team
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * name: string
     * Request body:
@@ -172,7 +172,7 @@
 
 * ### PUT "/teams/{team_name}/activate" — activate a team
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * team_name: string
     * Request body:
@@ -182,7 +182,7 @@
 
 * ### PUT "/teams/{team_name}/deactivate" — deactivate a team
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * team_name: string
     * Request body:
@@ -202,7 +202,7 @@
 
 * ### DELETE "/teams/{team_name}" — delete a team
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * team_name: string
     * Request body:
@@ -212,7 +212,7 @@
 
 * ### POST "/teams/{team_name}/members" — create a team member
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * team_name: string
     * Request body:
@@ -259,7 +259,7 @@
 
 * ### PUT "/teams/{team_name}/members/{member_username}/make-coach" — make a team member coach
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * team_name: string
         * member_username: string
@@ -270,7 +270,7 @@
 
 * ### PUT "/teams/{team_name}/members/{member_username}/make-contestant" — make a team member contestant
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * team_name: string
         * member_username: string
@@ -281,7 +281,7 @@
 
 * ### PUT "/teams/{team_name}/members/{member_username}/confirm" — confirm a team member
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * team_name: string
         * member_username: string
@@ -292,7 +292,7 @@
 
 * ### PUT "/teams/{team_name}/members/{member_username}/decline" — decline a team member
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * team_name: string
         * member_username: string
@@ -303,7 +303,7 @@
 
 * ### DELETE "/teams/{team_name}/members/{member_username}" — delete a team member
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * team_name: string
         * member_username: string
@@ -314,7 +314,7 @@
 
 * ### POST "/problems" — create a problem
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * empty
     * Request body:
@@ -331,7 +331,7 @@
 
 * ### GET "/problems/{problem_id}" — get a problem
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * problem_id: integer
     * Request body:
@@ -372,7 +372,7 @@
 
 * ### GET "/users/{username}/problems?only_public={only_public}?only_private={only_private}" — get all user's problems
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * username: string
         * only_public: boolean
@@ -395,7 +395,7 @@
 
 * ### PUT "/problems/{problem_id}/make-public" — make a problem public
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * problem_id: integer
     * Request body:
@@ -405,7 +405,7 @@
 
 * ### PUT "/problems/{problem_id}/make-private" — make a problem private
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * problem_id: integer
     * Request body:
@@ -425,7 +425,7 @@
 
 * ### PUT "/problems/{problem_id}" — update a problem
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * problem_id: integer
     * Request body:
@@ -441,7 +441,7 @@
 
 * ### DELETE "/problems/{problem_id}" — delete a problem
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * problem_id: integer
     * Request body:
@@ -451,7 +451,7 @@
 
 * ### POST "/problems/{problem_id}/test-cases" — create a test case
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * problem_id: integer
     * Request body:
@@ -464,7 +464,7 @@
 
 * ### GET "/problems/{problem_id}/test-cases/{test_case_id}" — get a test case
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * problem_id: integer
         * test_case_id: integer
@@ -480,7 +480,7 @@
 
 * ### GET "/problems/{problem_id}/test-cases?only_opened={only_opened}" — get test cases
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * problem_id: integer
         * only_opened: boolean
@@ -498,7 +498,7 @@
 
 * ### GET "/problems/{problem_id}/with-test-cases" — get a problem with test cases
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * problem_id: integer
     * Request body:
@@ -525,7 +525,7 @@
 
 * ### PUT "/problems/{problem_id}/test-cases/{test_case_id}/make-opened" — make a test case opened
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * problem_id: integer
         * test_case_id: integer
@@ -536,7 +536,7 @@
 
 * ### PUT "/problems/{problem_id}/test-cases/{test_case_id}/make-closed" — make a test case closed
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * problem_id: integer
         * test_case_id: integer
@@ -547,7 +547,7 @@
 
 * ### PUT "/problems/{problem_id}/test-cases/{test_case_id}" — update a test case
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * problem_id: integer
         * test_case_id: integer
@@ -560,7 +560,7 @@
 
 * ### DELETE "/problems/{problem_id}/test-cases/{test_case_id}" — delete a test case
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * problem_id: integer
         * test_case_id: integer
@@ -571,7 +571,7 @@
 
 * ### POST "/submissions?no_realtime={no_realtime}" — create a submission
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * no_realtime: boolean?
     * Request body:
@@ -609,7 +609,7 @@
 
 * ### GET "/submissions/{submission_id}" — get a submission
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * submission_id: integer
     * Request body:
@@ -741,7 +741,7 @@
 
 * ### GET "/problems/{problem_id}/submissions/public" — get public data about all submission on a problem
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * problem_id: integer
     * Request body:
@@ -760,7 +760,7 @@
 
 * ### DELETE "/problems/{problem_id}/submissions/authors" — delete all author's submissions on a problem
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * problem_id: integer
     * Request body:
@@ -770,7 +770,7 @@
 
 * ### POST "/debug" — create a submission
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * empty
     * Request body:
@@ -788,7 +788,7 @@
 
 * ### POST "/debug" — create a submission
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * empty
     * Request body:
@@ -818,7 +818,7 @@
 
 * ### POST "/competitions" — create a competition
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * empty
     * Request body:
@@ -834,7 +834,7 @@
 
 * ### GET "/competitions/{competition_id}" — get a competition
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * competition_id: integer
     * Request body:
@@ -876,7 +876,7 @@
 
 * ### GET "/users/me/competitions/authored?status={status}&only_public={only_public}&only_private={only_private}" — get your authored competitions
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * status: string? (unstarted, ongoing or ended)
         * only_private: boolean?
@@ -899,7 +899,7 @@
 
 * ### GET "/users/me/competitions/participated?status={status}&only_public={only_public}&only_private={only_private}" — get your participated competitions
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * status: string? (unstarted, ongoing or ended)
         * only_private: boolean?
@@ -928,7 +928,7 @@
 
 * ### PUT "/competitions/{competition_id}/make-public" — make a competition public
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * competition_id: integer
     * Request body:
@@ -938,7 +938,7 @@
 
 * ### PUT "/competitions/{competition_id}/make-private" — make a competition private
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * competition_id: integer
     * Request body:
@@ -948,7 +948,7 @@
 
 * ### GET "/competitions/{competition_id}/check-if-can-be-edited" — check if a competition can be edited
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * competition_id: integer
     * Request body:
@@ -958,7 +958,7 @@
 
 * ### PUT "/competitions/{competition_id}" — update a competition
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * competition_id: integer
     * Request body:
@@ -973,7 +973,7 @@
 
 * ### DELETE "/competitions/{competition_id}" — delete a competition
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * competition_id: integer
     * Request body:
@@ -983,7 +983,7 @@
 
 * ### POST "/competitions/{competition_id}/participants" — create a competition participant
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * competition_id: integer
     * Request body:
@@ -994,7 +994,7 @@
 
 * ### GET "/competitions/{competition_id}/participants?only_author_confirmed={only_author_confirmed}&only_author_unconfirmed={only_author_unconfirmed}&only_author_declined={only_author_declined}&only_author_undeclined={only_author_undeclined}&only_participant_confirmed={only_participant_confirmed}&only_participant_unconfirmed={only_participant_unconfirmed}&only_participant_declined={only_participant_declined}&only_participant_undeclined={only_participant_undeclined}&only_individuals={only_individuals}&only_teams={only_teams}" — get competition participants
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * competition_id: integer
         * only_author_confirmed: boolean
@@ -1022,7 +1022,7 @@
 
 * ### GET "/competitions/{competition_id}/participants/users/{username}" — get a participation data about a user
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * competition_id: integer
         * username: string
@@ -1038,7 +1038,7 @@
 
 * ### PUT "/competitions/{competition_id}/participants/individuals/{username}/confirm" — confirm an individual participant
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * competition_id: integer
         * username: string
@@ -1049,7 +1049,7 @@
 
 * ### PUT "/competitions/{competition_id}/participants/individuals/{username}/decline" — decline an individual participant
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * competition_id: integer
         * username: string
@@ -1060,7 +1060,7 @@
 
 * ### PUT "/competitions/{competition_id}/participants/teams/{team_name}/confirm" — confirm a team participant
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * competition_id: integer
         * team_name: string
@@ -1071,7 +1071,7 @@
 
 * ### PUT "/competitions/{competition_id}/participants/teams/{team_name}/decline" — decline a team participant
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * competition_id: integer
         * team_name: string
@@ -1082,7 +1082,7 @@
 
 * ### DELETE "/competitions/{competition_id}/participants/individuals/{username}" — delete an individual participant
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * competition_id: integer
         * username: string
@@ -1093,7 +1093,7 @@
 
 * ### DELETE "/competitions/{competition_id}/participants/teams/{team_name}" — delete a team participant
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * competition_id: integer
         * team_name: string
@@ -1104,7 +1104,7 @@
 
 * ### POST "/competitions/{competition_id}/problems" — create a competition problem
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * competition_id: integer
     * Request body:
@@ -1114,7 +1114,7 @@
 
 * ### GET "/competitions/{competition_id}/problems/{problem_id}" — get a competition problem
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * competition_id: integer
         * problem_id: string
@@ -1142,7 +1142,7 @@
 
 * ### GET "/competitions/{competition_id}/problems" — get competition problems
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * competition_id: integer
     * Request body:
@@ -1171,7 +1171,7 @@
 
 * ### DELETE "/competitions/{competition_id}/problems/{problem_id}" — delete a competition problem
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * competition_id: integer
         * problem_id: string
@@ -1182,7 +1182,7 @@
 
 * ### POST "/competitions/{competition_id}/submissions?no_realtime={no_realtime}" — create a submission for a competition
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * competition_id: integer
         * no_realtime: boolean?
@@ -1221,7 +1221,7 @@
 
 * ### GET "/competitions/{competition_id}/submissions/{submission_id}" — get a submission from a competition
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * competition_id: integer
         * submission_id: integer
@@ -1266,7 +1266,7 @@
 
 * ### GET "/competitions/{competition_id}/participants/individuals/{username_or_team_name}/submissions/public" — get public data about all individual participant's submissions from a competition
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * competition_id: integer
         * username_or_team_name: string
@@ -1286,7 +1286,7 @@
 
 * ### GET "/competitions/{competition_id}/participants/teams/{username_or_team_name}/submissions/public" — get public data about all team participant's submissions from a competition
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * competition_id: integer
         * username_or_team_name: string
@@ -1307,7 +1307,7 @@
 
 * ### GET "/competitions/{competition_id}/participants/individuals/{username_or_team_name}/submissions/public/problems/{problem_id}" — get public data about all individual participant's submissions from a competition for a problem
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * competition_id: integer
         * username_or_team_name: string
@@ -1328,7 +1328,7 @@
 
 * ### GET "/competitions/{competition_id}/participants/teams/{username_or_team_name}/submissions/public/problems/{problem_id}" — get public data about all team participant's submissions from a competition for a problem
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * competition_id: integer
         * username_or_team_name: string
@@ -1348,7 +1348,7 @@
 
 * ### GET "/competitions/{competition_id}/scoreboard" — get competition's scoreboard
     * Request headers:
-        * Authroization: string (access token)
+        * Authorization: string (access token)
     * Request parameters:
         * competition_id: integer
     * Request body:

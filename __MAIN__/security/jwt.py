@@ -8,12 +8,12 @@ from config import config
 from fastapi import HTTPException
 from pydantic import BaseModel
 
-def encode_token(id: int, username: str, use: str = 'authroization') -> str:
+def encode_token(id: int, username: str, use: str = 'authorization') -> str:
     if config['JWT_SECRET'] is None:
         raise HTTPException(status_code=500, detail="Internal Server Error")
     else:
         try:
-            return jwt.encode({'id': id, 'username': username, 'use': use, 'exp': datetime.datetime.utcnow() + datetime.timedelta(days=365) if use == 'authroization' else datetime.datetime.utcnow() + datetime.timedelta(days=1)}, config['JWT_SECRET'], algorithm='HS256')
+            return jwt.encode({'id': id, 'username': username, 'use': use, 'exp': datetime.datetime.utcnow() + datetime.timedelta(days=365) if use == 'authorization' else datetime.datetime.utcnow() + datetime.timedelta(days=1)}, config['JWT_SECRET'], algorithm='HS256')
         except:
             raise HTTPException(status_code=500, detail="Internal Server Error")
 
@@ -22,7 +22,7 @@ class Token(BaseModel):
     username: str
     use: str
 
-def decode_token(token: str | None, use: str = 'authroization') -> Token:
+def decode_token(token: str | None, use: str = 'authorization') -> Token:
     if config['JWT_SECRET'] is None:
         raise HTTPException(status_code=401, detail="You didn't provide a token")
     if token is None or token == '':
