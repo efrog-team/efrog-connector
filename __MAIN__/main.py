@@ -62,6 +62,8 @@ def send_verification_token(id: int, username: str, email: str) -> None:
 
 @app.post("/users")
 def post_user(user: UserRequest, do_not_send_verification_token: bool = False) -> JSONResponse:
+    if config['BLOCK_USER_REGISTRATION']:
+        raise HTTPException(status_code=403, detail="User registration is blocked")
     if user.username == "":
         raise HTTPException(status_code=400, detail="Username is empty")
     if len(user.username) < 3:
@@ -1438,9 +1440,9 @@ def post_debug(debug: DebugRequest, authorization: Annotated[str | None, Header(
             raise HTTPException(status_code=403, detail="You already have a testing submission or debug")
         testing_users[token.id] = True
         cursor.execute("""
-            INSERT INTO debug (author_user_id, number_of_inputs, time_sent)
-            VALUES (%(author_user_id)s, 1, NOW())
-        """, {'author_user_id': token.id})
+            INSERT INTO debug (author_user_id, code, number_of_inputs, time_sent)
+            VALUES (%(author_user_id)s, %(code)s, 1, NOW())
+        """, {'author_user_id': token.id, 'code': debug.code})
         debug_submission_id: int | None = cursor.lastrowid
         if debug_submission_id is None:
             raise HTTPException(status_code=500, detail="Internal server error")
@@ -1465,9 +1467,9 @@ def post_debug_many(debug: DebugRequestMany, authorization: Annotated[str | None
             raise HTTPException(status_code=403, detail="You already have a testing submission or debug")
         testing_users[token.id] = True
         cursor.execute("""
-            INSERT INTO debug (author_user_id, number_of_inputs, time_sent)
-            VALUES (%(author_user_id)s, %(number_of_inputs)s, NOW())
-        """, {'author_user_id': token.id, 'number_of_inputs': len(debug.inputs)})
+            INSERT INTO debug (author_user_id, code, number_of_inputs, time_sent)
+            VALUES (%(author_user_id)s, %(code)s, %(number_of_inputs)s, NOW())
+        """, {'author_user_id': token.id, 'number_of_inputs': len(debug.inputs), 'code': debug.code})
         debug_submission_id: int | None = cursor.lastrowid
         if debug_submission_id is None:
             raise HTTPException(status_code=500, detail="Internal server error")
