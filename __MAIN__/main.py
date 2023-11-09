@@ -62,7 +62,7 @@ def send_verification_token(id: int, username: str, email: str) -> None:
 
 @app.post("/users")
 def post_user(user: UserRequest, do_not_send_verification_token: bool = False) -> JSONResponse:
-    if config['BLOCK_USER_REGISTRATION']:
+    if config['BLOCK_USER_REGISTRATION'] == 'True':
         raise HTTPException(status_code=403, detail="User registration is blocked")
     if user.username == "":
         raise HTTPException(status_code=400, detail="Username is empty")
