@@ -17,7 +17,7 @@ from typing import Any
 from json import dumps
 from smtplib import SMTP_SSL
 from email.mime.text import MIMEText
-from datetime import datetime
+from datetime import datetime, UTC
 
 checking_queue: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=4)
 current_websockets: dict[int, CurrentWebsocket] = {}
@@ -1486,9 +1486,9 @@ def post_competition(competition: CompetitionRequest, authorization: Annotated[s
         raise HTTPException(status_code=400, detail="Name is too short")
     if convert_and_validate_datetime(competition.start_time, "start_time") > convert_and_validate_datetime(competition.end_time, "end_time"):
         raise HTTPException(status_code=400, detail="Start time is after end time")
-    if (not past_times and convert_and_validate_datetime(competition.start_time, "start_time") < datetime.now()):
+    if (not past_times and convert_and_validate_datetime(competition.start_time, "start_time") < datetime.now(UTC)):
         raise HTTPException(status_code=400, detail="Start time is in the past")
-    if (not past_times and convert_and_validate_datetime(competition.start_time, "end_time") < datetime.now()):
+    if (not past_times and convert_and_validate_datetime(competition.start_time, "end_time") < datetime.now(UTC)):
         raise HTTPException(status_code=400, detail="End time is in the past")
     if competition.maximum_team_members_number < 1:
         raise HTTPException(status_code=400, detail="Maximum team members number cannot be less than 1")
@@ -1697,12 +1697,12 @@ def put_competition(competition_id: int, competition: CompetitionRequestUpdate, 
             update_set += "description = %(description)s, "
             update_dict['description'] = competition.description
         if competition.start_time is not None and competition.start_time != '':
-            if convert_and_validate_datetime(competition.start_time) < datetime.now():
+            if convert_and_validate_datetime(competition.start_time) < datetime.now(UTC):
                 raise HTTPException(status_code=400, detail="Start time is in the past")
             update_set += "start_time = %(start_time)s, "
             update_dict['start_time'] = competition.start_time
         if competition.end_time is not None and competition.end_time != '':
-            if (not past_times and convert_and_validate_datetime(competition.end_time) < datetime.now()):
+            if (not past_times and convert_and_validate_datetime(competition.end_time) < datetime.now(UTC)):
                 raise HTTPException(status_code=400, detail="End time is in the past")
             if competition.start_time is not None and competition.start_time != '' and convert_and_validate_datetime(competition.start_time) > convert_and_validate_datetime(competition.end_time):
                 raise HTTPException(status_code=400, detail="Start time is after end time")
