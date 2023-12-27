@@ -3,17 +3,17 @@ import os
 sys.path.insert(0, os.path.dirname(__file__).replace('\\', '/') + '/../')
 
 import jwt
-import datetime
+from datetime import datetime, timedelta
 from config import config
 from fastapi import HTTPException
 from pydantic import BaseModel
 
-def encode_token(id: int, username: str, use: str = 'authorization') -> str:
+def encode_token(id: int, username: str, use: str = 'authorization', exp_delta: timedelta = timedelta(days=365)) -> str:
     if config['JWT_SECRET'] is None:
         raise HTTPException(status_code=500, detail="Internal Server Error")
     else:
         try:
-            return jwt.encode({'id': id, 'username': username, 'use': use, 'exp': datetime.datetime.utcnow() + datetime.timedelta(days=365) if use == 'authorization' else datetime.datetime.utcnow() + datetime.timedelta(days=1)}, config['JWT_SECRET'], algorithm='HS256')
+            return jwt.encode({'id': id, 'username': username, 'use': use, 'exp': datetime.utcnow() + exp_delta}, config['JWT_SECRET'], algorithm='HS256')
         except:
             raise HTTPException(status_code=500, detail="Internal Server Error")
 

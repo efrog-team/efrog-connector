@@ -18,6 +18,7 @@ pluggy==1.2.0
 protobuf==3.20.3
 pydantic==1.10.10
 PyJWT==2.7.0
+pyotp==2.9.0
 pytest==7.4.0
 pytest-bdd==6.1.1
 python-dotenv==1.0.0

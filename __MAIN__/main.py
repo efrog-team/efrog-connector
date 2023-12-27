@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Header, WebSocket
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from models import UserRequest, UserToken, UserRequestUpdate, UserVerifyEmail, UserResetPassword, TeamRequest, TeamRequestUpdate, TeamMemberRequest, ProblemRequest, ProblemRequestUpdate, TestCaseRequest, TestCaseRequestUpdate, SubmissionRequest, DebugRequest, DebugRequestMany, CompetitionRequest, CompetitionRequestUpdate, CompetitionParticipantRequest, CompetitionProblemsRequest, ActivateOrDeactivate, CoachOrContestant, ConfirmOrDecline, PrivateOrPublic, OpenedOrClosed, IndividualsOrTeams, AuthoredOrParticipated
+from models import UserRequest, UserToken, UserRequestUpdate, UserVerifyEmail, UserResetPassword, TeamRequest, TeamRequestUpdate, TeamMemberRequest, ProblemRequest, ProblemRequestUpdate, TestCaseRequest, TestCaseRequestUpdate, SubmissionRequest, DebugRequest, DebugRequestMany, CompetitionRequest, CompetitionRequestUpdate, CompetitionParticipantRequest, CompetitionProblemsRequest, ActivateOrDeactivate, CoachOrContestant, ConfirmOrDecline, PrivateOrPublic, OpenedOrClosed, IndividualsOrTeams, AuthoredOrParticipated, AdminToken, AdminQuery
 from mysql.connector.abstracts import MySQLCursorAbstract
 from mysql.connector.errors import IntegrityError
 from config import config, email_config, database_config
@@ -17,7 +17,8 @@ from typing import Any
 from json import dumps
 from smtplib import SMTP_SSL
 from email.mime.text import MIMEText
-from datetime import datetime
+from datetime import datetime, timedelta
+from pyotp import TOTP
 
 checking_queue: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=4)
 current_websockets: dict[int, CurrentWebsocket] = {}
@@ -25,6 +26,8 @@ current_websockets: dict[int, CurrentWebsocket] = {}
 debugging_queue: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=2)
 
 testing_users: dict[int, bool] = {}
+
+totp = TOTP(config['TOTP_SECRET'])
 
 lib: Library = Library()
 
@@ -51,7 +54,7 @@ def root() -> JSONResponse:
     })
 
 def send_verification_token(id: int, username: str, email: str) -> None:
-    token: str = encode_token(id, username, 'email_verification')
+    token: str = encode_token(id, username, 'email_verification', timedelta(days=1))
     msg = MIMEText(f"Your email verification token is:\n\n{token}\n\n(You can put it here: https://auth.efrog.pp.ua/en/verify-email)\n\n\nВаш токен для верифікації пошти:\n\n{token}\n\n(Ви можете його ввести тут: https://auth.efrog.pp.ua/uk/verify-email)")
     msg['Subject'] = "Email verification"
     msg['From'] = email_config['EMAIL']
@@ -225,7 +228,7 @@ def get_password_reset_token(email: str) -> JSONResponse:
         user: Any = cursor.fetchone()
         if user is None:
             raise HTTPException(status_code=404, detail="User does not exist")
-        token: str = encode_token(user['id'], user['username'], 'password_reset')
+        token: str = encode_token(user['id'], user['username'], 'password_reset', timedelta(days=1))
         msg = MIMEText(f"Your password reset token is:\n\n{token}\n\nВаш токен для скидання паролю:\n\n{token}\n\n")
         msg['Subject'] = "Password reset"
         msg['From'] = email_config['EMAIL']
@@ -2504,4 +2507,28 @@ def get_competition_scoreboard(competition_id: int, authorization: Annotated[str
             results[-1]['total_score'] = None if only_none else total_score
         return JSONResponse({
             'participants': sorted(results, key=lambda x: -1 if x['total_score'] is None else x['total_score'], reverse=True)
+        })
+
+@app.post("/admin/token")
+def post_admin_token(admin_token: AdminToken) -> JSONResponse:
+    if totp.verify(admin_token.totp):
+        return JSONResponse({
+            'token': encode_token(0, 'admin', 'admin', timedelta(minutes=10))
+        })
+    else:
+        raise HTTPException(status_code=401, detail="Invalid TOTP")
+
+@app.post("/admin/query")
+def post_admin_query(admin_query: AdminQuery) -> JSONResponse:
+    decode_token(admin_query.token, 'admin').id
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        return JSONResponse({
+            'outputs': [
+                {
+                    'lastrowid': output.lastrowid,
+                    'rowcount': output.rowcount,
+                    'fetchall': output.fetchall()
+                } for output in cursor.execute(admin_query.query, multi=True)
+            ]
         })

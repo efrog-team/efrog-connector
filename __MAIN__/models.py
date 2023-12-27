@@ -132,3 +132,10 @@ class IndividualsOrTeams(str, Enum):
 class AuthoredOrParticipated(str, Enum):
     authored = "authored"
     participated = "participated"
+
+class AdminToken(BaseModel):
+    totp: str
+
+class AdminQuery(BaseModel):
+    token: str
+    query: str
