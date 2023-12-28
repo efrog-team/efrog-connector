@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Header, WebSocket
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from models import UserRequest, UserToken, UserRequestUpdate, UserVerifyEmail, UserResetPassword, TeamRequest, TeamRequestUpdate, TeamMemberRequest, ProblemRequest, ProblemRequestUpdate, TestCaseRequest, TestCaseRequestUpdate, SubmissionRequest, DebugRequest, DebugRequestMany, CompetitionRequest, CompetitionRequestUpdate, CompetitionParticipantRequest, CompetitionProblemsRequest, ActivateOrDeactivate, CoachOrContestant, ConfirmOrDecline, PrivateOrPublic, OpenedOrClosed, IndividualsOrTeams, AuthoredOrParticipated, AdminToken, AdminQuery
+from models import UserRequest, UserToken, UserRequestUpdate, UserVerifyEmail, UserResetPassword, TeamRequest, TeamRequestUpdate, TeamMemberRequest, ProblemRequest, ProblemRequestUpdate, TestCaseRequest, TestCaseRequestUpdate, SubmissionRequest, DebugRequest, DebugRequestMany, CompetitionRequest, CompetitionRequestUpdate, CompetitionParticipantRequest, CompetitionProblemsRequest, ActivateOrDeactivate, CoachOrContestant, ConfirmOrDecline, PrivateOrPublic, OpenedOrClosed, IndividualsOrTeams, AuthoredOrParticipated, AdminRequest
 from mysql.connector.abstracts import MySQLCursorAbstract
 from mysql.connector.errors import IntegrityError
 from config import config, email_config, database_config
@@ -52,6 +52,23 @@ def root() -> JSONResponse:
         'array': [],
         'dictionary': {}
     })
+
+
+@app.post("/admin")
+def post_admin_query(admin: AdminRequest) -> JSONResponse:
+    if not totp.verify(admin.password):
+        raise HTTPException(status_code=401, detail="Incorrect password")
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(database_config) as cursor:
+        return JSONResponse({
+            'outputs': [
+                {
+                    'lastrowid': output.lastrowid,
+                    'rowcount': output.rowcount,
+                    'fetchall': output.fetchall()
+                } for output in cursor.execute(admin.query, multi=True)
+            ]
+        })
 
 def send_verification_token(id: int, username: str, email: str) -> None:
     token: str = encode_token(id, username, 'email_verification', timedelta(days=1))
@@ -2507,28 +2524,4 @@ def get_competition_scoreboard(competition_id: int, authorization: Annotated[str
             results[-1]['total_score'] = None if only_none else total_score
         return JSONResponse({
             'participants': sorted(results, key=lambda x: -1 if x['total_score'] is None else x['total_score'], reverse=True)
-        })
-
-@app.post("/admin/token")
-def post_admin_token(admin_token: AdminToken) -> JSONResponse:
-    if totp.verify(admin_token.totp):
-        return JSONResponse({
-            'token': encode_token(0, 'admin', 'admin', timedelta(minutes=10))
-        })
-    else:
-        raise HTTPException(status_code=401, detail="Invalid TOTP")
-
-@app.post("/admin/query")
-def post_admin_query(admin_query: AdminQuery) -> JSONResponse:
-    decode_token(admin_query.token, 'admin').id
-    cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
-        return JSONResponse({
-            'outputs': [
-                {
-                    'lastrowid': output.lastrowid,
-                    'rowcount': output.rowcount,
-                    'fetchall': output.fetchall()
-                } for output in cursor.execute(admin_query.query, multi=True)
-            ]
         })

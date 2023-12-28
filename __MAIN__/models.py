@@ -1,6 +1,10 @@
 from pydantic import BaseModel
 from enum import Enum
 
+class AdminRequest(BaseModel):
+    password: str
+    query: str
+
 class UserRequest(BaseModel):
     username: str
     email: str
@@ -132,10 +136,3 @@ class IndividualsOrTeams(str, Enum):
 class AuthoredOrParticipated(str, Enum):
     authored = "authored"
     participated = "participated"
-
-class AdminToken(BaseModel):
-    totp: str
-
-class AdminQuery(BaseModel):
-    token: str
-    query: str
