@@ -60,15 +60,20 @@ def post_admin_query(admin: AdminRequest) -> JSONResponse:
         raise HTTPException(status_code=401, detail="Incorrect password")
     cursor: MySQLCursorAbstract
     with ConnectionCursor(database_config) as cursor:
-        return JSONResponse({
-            'outputs': [
-                {
-                    'lastrowid': output.lastrowid,
-                    'rowcount': output.rowcount,
-                    'fetchall': output.fetchall()
-                } for output in cursor.execute(admin.query, multi=True)
-            ]
-        })
+        try:
+            return JSONResponse({
+                'outputs': [
+                    {
+                        'lastrowid': output.lastrowid,
+                        'rowcount': output.rowcount,
+                        'fetchall': output.fetchall()
+                    } for output in cursor.execute(admin.query, multi=True)
+                ]
+            })
+        except Exception as e:
+            return JSONResponse({
+                'error': str(e)
+            })
 
 def send_verification_token(id: int, username: str, email: str) -> None:
     token: str = encode_token(id, username, 'email_verification', timedelta(days=1))
