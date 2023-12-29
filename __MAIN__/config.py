@@ -5,17 +5,27 @@ from mysql.connector.types import DescriptionType
 from mysql.connector.conversion import MySQLConverter
 
 app_path: str = os.path.dirname(__file__).replace("\\", "/")
-config: dict[str, str | None] = dotenv_values(f'{app_path}/.env')
+config: dict[str, str | None] = dict(dotenv_values(f'{app_path}/.env'))
 
 try:
-    host: str | None = os.environ['DB_HOST']
+    db_host: str | None = os.environ['DB_HOST']
 except:
-    host: str | None = config['DB_HOST']
+    db_host: str | None = config['DB_HOST']
 
 try:
-    port: int | None = int(os.environ['DB_PORT']) if os.environ['DB_PORT'] is not None else None
+    db_port: int | None = None if os.environ['DB_PORT'] is None else int(os.environ['DB_PORT'])
 except:
-    port: int | None = int(config['DB_PORT']) if config['DB_PORT'] is not None else None
+    db_port: int | None = None if config['DB_PORT'] is None else int(config['DB_PORT'])
+
+try:
+    cache_host: str | None = os.environ['CACHE_HOST']
+except:
+    cache_host: str | None = config['CACHE_HOST']
+
+try:
+    cache_port: int | None = None if os.environ['CACHE_PORT'] is None else int(os.environ['CACHE_PORT'])
+except:
+    cache_port: int | None = None if config['CACHE_PORT'] is None else int(config['CACHE_PORT'])
 
 class CustomConverter(MySQLConverter):
     @staticmethod
@@ -26,14 +36,21 @@ class CustomConverter(MySQLConverter):
     def _datetime_to_python(value: bytes, dsc: Optional[DescriptionType] = None) -> Any:
         return value.decode('utf-8')
 
-database_config: dict[str, str | int | Type[CustomConverter] | None] = {
-    'host': host,
+db_config: dict[str, str | int | Type[CustomConverter] | None] = {
+    'host': db_host,
     'user': config['DB_USERNAME'],
     'password': config['DB_PASSWORD'],
     'database': config['DB_DATABASE'],
-    'port': port,
+    'port': db_port,
     'converter_class': CustomConverter,
     'charset': 'utf8mb4'
+}
+
+
+cache_config: dict[str, int] = {
+    'host': cache_host,
+    'port': cache_port,
+    'decode_responses': True
 }
 
 email_config: dict[str, str] = {

@@ -205,7 +205,7 @@ def problem(fields: str, name: str, names_convert: dict[str, str], data: dict[st
         fields_list = fields.replace(" and ", ", ").split(", ")
     if name == "the correct public":
         if 'id' in fields_list:
-            data['id'] = 3
+            data['id'] = 2
         if 'name' in fields_list:
             data['name'] = 'Hello World! Public'
         if 'statement' in fields_list:
@@ -224,7 +224,7 @@ def problem(fields: str, name: str, names_convert: dict[str, str], data: dict[st
             data['private'] = 0
     elif name == "the correct private":
         if 'id' in fields_list:
-            data['id'] = 4
+            data['id'] = 3
         if 'name' in fields_list:
             data['name'] = 'Hello World! Private'
         if 'statement' in fields_list:
@@ -243,7 +243,7 @@ def problem(fields: str, name: str, names_convert: dict[str, str], data: dict[st
             data['private'] = 1
     else:
         if 'id' in fields_list:
-            data['id'] = 5
+            data['id'] = 4
         if 'name' in fields_list:
             data['name'] = names_convert[name]
         if 'statement' in fields_list:
@@ -263,7 +263,7 @@ def problem(fields: str, name: str, names_convert: dict[str, str], data: dict[st
 
 @then(parsers.parse("add {name} problem to the database"))
 def problem_in_database(name: str, names_convert: dict[str, str]) -> None:
-    if name == "the correct public" and client.get('/problems/3').status_code == 404:
+    if name == "the correct public" and client.get('/problems/2').status_code == 404:
         client.post('/problems', json={
             'name': 'Hello World! Public',
             'statement': 'Print Hello World!',
@@ -279,7 +279,7 @@ def problem_in_database(name: str, names_convert: dict[str, str]) -> None:
                 'password': "correct"
             }).json()['token']
         })
-    elif name == "the correct private" and client.get('/problems/4', headers={
+    elif name == "the correct private" and client.get('/problems/3', headers={
             'Authorization': client.post('/token', json={
                 'username': "correct",
                 'password': "correct"
@@ -300,7 +300,7 @@ def problem_in_database(name: str, names_convert: dict[str, str]) -> None:
                 'password': "correct"
             }).json()['token']
         })
-    elif client.get('/problems/5').status_code == 404:
+    elif client.get('/problems/4').status_code == 404:
         client.post('/problems', json={
             'name': names_convert[name],
             'statement': names_convert[name] + ' statement',
@@ -328,7 +328,7 @@ def test_case(fields: str, name: str, names_convert: dict[str, str], data: dict[
         fields_list = fields.replace(" and ", ", ").split(", ")
     if name == "the correct opened":
         if 'id' in fields_list:
-            data['id'] = 8
+            data['id'] = 7
         if 'input' in fields_list:
             data['input'] = ''
         if 'solution' in fields_list:
@@ -339,7 +339,7 @@ def test_case(fields: str, name: str, names_convert: dict[str, str], data: dict[
             data['opened'] = 1
     elif name == "the correct closed":
         if 'id' in fields_list:
-            data['id'] = 9
+            data['id'] = 8
         if 'input' in fields_list:
             data['input'] = ''
         if 'solution' in fields_list:
@@ -350,7 +350,7 @@ def test_case(fields: str, name: str, names_convert: dict[str, str], data: dict[
             data['opened'] = 0
     else:
         if 'id' in fields_list:
-            data['id'] = 10
+            data['id'] = 9
         if 'input' in fields_list:
             data['input'] = names_convert[name]
         if 'solution' in fields_list:
@@ -372,7 +372,7 @@ def submission(fields: str, name: str, names_convert: dict[str, str], data: dict
         if 'id' in fields_list:
             data['id'] = 1
         if 'problem_id' in fields_list:
-            data['problem_id'] = 3
+            data['problem_id'] = 2
         if 'code' in fields_list:
             data['code'] = 'print("Hello World!")'
         if 'language_name' in fields_list:
@@ -383,7 +383,7 @@ def submission(fields: str, name: str, names_convert: dict[str, str], data: dict
         if 'id' in fields_list:
             data['id'] = 2
         if 'problem_id' in fields_list:
-            data['problem_id'] = 3
+            data['problem_id'] = 2
         if 'code' in fields_list:
             data['code'] = names_convert[name]
         if 'language_name' in fields_list:

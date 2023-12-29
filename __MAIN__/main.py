@@ -1,10 +1,10 @@
 from fastapi import FastAPI, HTTPException, Header, WebSocket
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from models import UserRequest, UserToken, UserRequestUpdate, UserVerifyEmail, UserResetPassword, TeamRequest, TeamRequestUpdate, TeamMemberRequest, ProblemRequest, ProblemRequestUpdate, TestCaseRequest, TestCaseRequestUpdate, SubmissionRequest, DebugRequest, DebugRequestMany, CompetitionRequest, CompetitionRequestUpdate, CompetitionParticipantRequest, CompetitionProblemsRequest, ActivateOrDeactivate, CoachOrContestant, ConfirmOrDecline, PrivateOrPublic, OpenedOrClosed, IndividualsOrTeams, AuthoredOrParticipated, AdminRequest
+from models import UserRequest, UserToken, UserRequestUpdate, UserVerifyEmail, UserResetPassword, TeamRequest, TeamRequestUpdate, TeamMemberRequest, ProblemRequest, ProblemRequestUpdate, TestCaseRequest, TestCaseRequestUpdate, SubmissionRequest, DebugRequest, DebugRequestMany, CompetitionRequest, CompetitionRequestUpdate, CompetitionParticipantRequest, CompetitionProblemsRequest, ActivateOrDeactivate, CoachOrContestant, ConfirmOrDecline, PrivateOrPublic, OpenedOrClosed, IndividualsOrTeams, AuthoredOrParticipated, AdminRequest, DbOrCache
 from mysql.connector.abstracts import MySQLCursorAbstract
 from mysql.connector.errors import IntegrityError
-from config import config, email_config, database_config
+from config import config, email_config, db_config
 from connection_cursor import ConnectionCursor
 from security.hash import hash_hex
 from security.jwt import encode_token, Token, decode_token
@@ -19,6 +19,7 @@ from smtplib import SMTP_SSL
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta
 from pyotp import TOTP
+from cache import cache
 
 checking_queue: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=4)
 current_websockets: dict[int, CurrentWebsocket] = {}
@@ -27,7 +28,9 @@ debugging_queue: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=2)
 
 testing_users: dict[int, bool] = {}
 
-totp = TOTP(config['TOTP_SECRET'])
+totp = TOTP(cache.get('totp_secret'))
+
+admin_continuous_failed_attempts: int = 0
 
 lib: Library = Library()
 
@@ -54,26 +57,44 @@ def root() -> JSONResponse:
     })
 
 
-@app.post("/admin")
-def post_admin_query(admin: AdminRequest) -> JSONResponse:
+@app.post("/admin/{db_or_cache}")
+def post_admin_query(admin: AdminRequest, db_or_cache: DbOrCache) -> JSONResponse:
+    global admin_continuous_failed_attempts
+    if cache.get('block_admin') == 'True':
+        raise HTTPException(status_code=403, detail="Admin request is blocked")
     if not totp.verify(admin.password):
+        admin_continuous_failed_attempts += 1
+        if admin_continuous_failed_attempts >= 10:
+            cache.set('block_admin', 'True')
         raise HTTPException(status_code=401, detail="Incorrect password")
-    cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    admin_continuous_failed_attempts = 0
+    if db_or_cache is DbOrCache.db:
+        cursor: MySQLCursorAbstract
+        with ConnectionCursor(db_config) as cursor:
+            try:
+                return JSONResponse({
+                    'outputs': [
+                        {
+                            'lastrowid': output.lastrowid,
+                            'rowcount': output.rowcount,
+                            'fetchall': output.fetchall()
+                        } for output in cursor.execute(admin.query, multi=True)
+                    ]
+                })
+            except Exception as e:
+                return JSONResponse({
+                    'error': str(e)
+                })
+    else:
         try:
             return JSONResponse({
-                'outputs': [
-                    {
-                        'lastrowid': output.lastrowid,
-                        'rowcount': output.rowcount,
-                        'fetchall': output.fetchall()
-                    } for output in cursor.execute(admin.query, multi=True)
-                ]
+                'output': cache.execute_command(admin.query)
             })
         except Exception as e:
             return JSONResponse({
                 'error': str(e)
             })
+        
 
 def send_verification_token(id: int, username: str, email: str) -> None:
     token: str = encode_token(id, username, 'email_verification', timedelta(days=1))
@@ -87,7 +108,7 @@ def send_verification_token(id: int, username: str, email: str) -> None:
 
 @app.post("/users")
 def post_user(user: UserRequest, do_not_send_verification_token: bool = False) -> JSONResponse:
-    if config['BLOCK_USER_REGISTRATION'] == 'True':
+    if cache.get('block_user_registration') == 'True':
         raise HTTPException(status_code=403, detail="User registration is blocked")
     if user.username == "":
         raise HTTPException(status_code=400, detail="Username is empty")
@@ -100,7 +121,7 @@ def post_user(user: UserRequest, do_not_send_verification_token: bool = False) -
     if user.password == "":
         raise HTTPException(status_code=400, detail="Password is empty")
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         try:
             cursor.execute("INSERT INTO users (username, email, name, password, verified) VALUES (%(username)s, %(email)s, %(name)s, %(password)s, 0)", {'username': user.username, 'email': user.email, 'name': user.name, 'password': hash_hex(user.password)})
         except IntegrityError:
@@ -115,7 +136,7 @@ def post_user(user: UserRequest, do_not_send_verification_token: bool = False) -
 @app.get("/users/email/{email}/resend-token")
 def get_email_resend_token(email: str) -> JSONResponse:
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("SELECT id, username, email, verified FROM users WHERE email = BINARY %(email)s LIMIT 1", {'email': email})
         user_db: Any = cursor.fetchone()
         if user_db is None:
@@ -129,7 +150,7 @@ def get_email_resend_token(email: str) -> JSONResponse:
 def post_email_verify(data: UserVerifyEmail) -> JSONResponse:
     token: Token = decode_token(data.token, 'email_verification')
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("UPDATE users SET verified = 1 WHERE id = %(id)s", {'id': token.id})
         if cursor.rowcount == 0:
             raise HTTPException(status_code=500, detail="Internal Server Error")
@@ -142,8 +163,10 @@ def post_email_verify(data: UserVerifyEmail) -> JSONResponse:
 
 @app.post("/token")
 def post_token(user: UserToken) -> JSONResponse:
+    if cache.get('block_authorization') == 'True':
+        raise HTTPException(status_code=403, detail="Authorization is blocked")
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("SELECT id, username, password, verified FROM users WHERE username = BINARY %(username)s LIMIT 1", {'username': user.username})
         user_db: Any = cursor.fetchone()
         if user_db is None:
@@ -158,7 +181,7 @@ def post_token(user: UserToken) -> JSONResponse:
 def get_user_me(authorization: Annotated[str | None, Header()]) -> JSONResponse:
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("SELECT username, email, name FROM users WHERE id = %(id)s LIMIT 1", {'id':token.id})
         user: Any = cursor.fetchone()
         if user is None:
@@ -169,7 +192,7 @@ def get_user_me(authorization: Annotated[str | None, Header()]) -> JSONResponse:
 def get_user_me_id(authorization: Annotated[str | None, Header()]) -> JSONResponse:
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("SELECT id FROM users WHERE id = %(id)s LIMIT 1", {'id':token.id})
         user: Any = cursor.fetchone()
         if user is None:
@@ -179,7 +202,7 @@ def get_user_me_id(authorization: Annotated[str | None, Header()]) -> JSONRespon
 @app.get("/users/{username}")
 def get_user(username: str) -> JSONResponse:  
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("SELECT username, email, name FROM users WHERE username = BINARY %(username)s AND verified = 1 LIMIT 1", {'username': username})
         user: Any = cursor.fetchone()
         if user is None:
@@ -189,7 +212,7 @@ def get_user(username: str) -> JSONResponse:
 @app.get("/users/{username}/id")
 def get_user_id(username: str) -> JSONResponse:  
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("SELECT id FROM users WHERE username = BINARY %(username)s AND verified = 1 LIMIT 1", {'username': username})
         user: Any = cursor.fetchone()
         if user is None:
@@ -199,7 +222,7 @@ def get_user_id(username: str) -> JSONResponse:
 @app.get("/users/id/{id}")
 def get_user_by_id(id: int) -> JSONResponse:  
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("SELECT username, email, name FROM users WHERE id = %(id)s AND verified = 1 LIMIT 1", {'id': id})
         user: Any = cursor.fetchone()
         if user is None:
@@ -212,7 +235,7 @@ def put_user(username: str, user: UserRequestUpdate, authorization: Annotated[st
     if token.username != username:
         raise HTTPException(status_code=403, detail="You are trying to change not your data")
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("SELECT username, email, name, password FROM users WHERE username = BINARY %(username)s LIMIT 1", {'username': username})
         user_db: Any = cursor.fetchone()
         if user_db is None:
@@ -244,8 +267,10 @@ def put_user(username: str, user: UserRequestUpdate, authorization: Annotated[st
 
 @app.get("/users/password/reset/token/email/{email}")
 def get_password_reset_token(email: str) -> JSONResponse:
+    if cache.get('block_password_reset') == 'True':
+        raise HTTPException(status_code=403, detail="Password reset is blocked")
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("SELECT id, username FROM users WHERE email = BINARY %(email)s AND verified = 1 LIMIT 1", {'email': email})
         user: Any = cursor.fetchone()
         if user is None:
@@ -264,7 +289,7 @@ def get_password_reset_token(email: str) -> JSONResponse:
 def reset_password(data: UserResetPassword) -> JSONResponse:
     token: Token = decode_token(data.token, 'password_reset')
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("UPDATE users SET password = %(password)s WHERE id = %(id)s", {'password': hash_hex(data.password), 'id': token.id})
     return JSONResponse({})
 
@@ -280,13 +305,15 @@ def detect_error_teams(cursor: MySQLCursorAbstract, team_name: str, owner_user_i
 
 @app.post("/teams")
 def post_team(team: TeamRequest, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+    if cache.get('block_team_creation') == 'True':
+        raise HTTPException(status_code=403, detail="Team creation is blocked")
     token: Token = decode_token(authorization)
     if team.name == "":
         raise HTTPException(status_code=400, detail="Name is empty")
     if len(team.name) < 3:
         raise HTTPException(status_code=400, detail="Name is too short")
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         try:
             cursor.execute("INSERT INTO teams (name, owner_user_id, active, individual) VALUES (%(name)s, %(owner_user_id)s, 1, 0)", {'name': team.name, 'owner_user_id': token.id})
         except IntegrityError:
@@ -300,7 +327,7 @@ def post_team(team: TeamRequest, authorization: Annotated[str | None, Header()])
 @app.get("/teams/{team_name}")
 def get_team(team_name: str) -> JSONResponse:
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("""
             SELECT 
                 teams.name AS name,
@@ -324,7 +351,7 @@ def put_team(team_name: str, team: TeamRequestUpdate, authorization: Annotated[s
     if len(team.name) < 3:
         raise HTTPException(status_code=400, detail="Name is too short")
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         try:
             cursor.execute("UPDATE teams SET name = %(new_name)s WHERE name = BINARY %(name)s AND owner_user_id = %(owner_user_id)s AND individual = 0", {'new_name': team.name, 'name': team_name, 'owner_user_id': token.id})
         except IntegrityError:
@@ -357,7 +384,7 @@ def get_teams(username: str, only_owned: bool = False, only_unowned: bool = Fals
     if only_undeclined:
         filter_conditions += " AND team_members.declined = 0"
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("""
             SELECT 
                 teams.name AS name,
@@ -382,7 +409,7 @@ def get_teams(username: str, only_owned: bool = False, only_unowned: bool = Fals
 def put_activate_team(team_name: str, activate_or_deactivate: ActivateOrDeactivate, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("UPDATE teams SET active = %(activate_or_deactivate)s WHERE name = BINARY %(name)s AND owner_user_id = %(owner_user_id)s AND individual = 0", {'name': team_name, 'owner_user_id': token.id, 'activate_or_deactivate': activate_or_deactivate is ActivateOrDeactivate.activate})
         if cursor.rowcount == 0:
             detect_error_teams(cursor, team_name, token.id, False, True)
@@ -400,7 +427,7 @@ def check_if_team_can_be_deleted(cursor: MySQLCursorAbstract, team_name: str) ->
 @app.get("/teams/{team_name}/check-if-can-be-deleted")
 def get_check_if_team_can_be_deleted(team_name: str) -> JSONResponse:
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         return JSONResponse({
             'can': check_if_team_can_be_deleted(cursor, team_name)
         })
@@ -409,7 +436,7 @@ def get_check_if_team_can_be_deleted(team_name: str) -> JSONResponse:
 def delete_team(team_name: str, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         if not check_if_team_can_be_deleted(cursor, team_name):
             raise HTTPException(status_code=403, detail="This team cannot be deleted")
         cursor.execute("""
@@ -455,7 +482,7 @@ def post_team_member(team_member: TeamMemberRequest, team_name: str, authorizati
     if team_member.member_username == "":
         raise HTTPException(status_code=400, detail="Username is empty")
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("SELECT id FROM users WHERE username = BINARY %(username)s AND verified = 1 LIMIT 1", {'username': team_member.member_username})
         member: Any = cursor.fetchone()
         if member is None:
@@ -490,7 +517,7 @@ def get_team_members(team_name: str, only_coaches: bool = False, only_contestant
     if only_undeclined:
         filter_conditions += " AND team_members.declined = 0"
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("""
             SELECT 
                 users.username AS member_username,
@@ -515,7 +542,7 @@ def get_team_members(team_name: str, only_coaches: bool = False, only_contestant
 @app.get("/teams/{team_name}/members/{member_username}")
 def get_team_member(team_name: str, member_username: str) -> JSONResponse:
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("""
             SELECT 
                 users.username AS member_username,
@@ -544,7 +571,7 @@ def get_team_member(team_name: str, member_username: str) -> JSONResponse:
 def put_team_member_make_coach_or_contestant(team_name: str, member_username: str, coach_or_contestant: CoachOrContestant, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("""
             UPDATE team_members
             INNER JOIN users ON team_members.member_user_id = users.id
@@ -562,7 +589,7 @@ def put_team_member_confirm_or_decline(team_name: str, member_username: str, con
     if token.username != member_username:
         raise HTTPException(status_code=403, detail="You are trying to change not your membership")
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("""
             UPDATE team_members
             INNER JOIN users ON team_members.member_user_id = users.id
@@ -580,7 +607,7 @@ def put_team_member_confirm_or_decline(team_name: str, member_username: str, con
 def delete_team_member(team_name: str, member_username: str, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("""
             DELETE team_members
             FROM team_members
@@ -604,17 +631,19 @@ def detect_error_problems(cursor: MySQLCursorAbstract, problem_id: int, author_u
 
 @app.post("/problems")
 def post_problem(problem: ProblemRequest, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+    if cache.get('block_problem_creation') == 'True':
+        raise HTTPException(status_code=403, detail="Problem creation is blocked")
     token: Token = decode_token(authorization)
     if problem.name == "":
         raise HTTPException(status_code=400, detail="Name is empty")
     if problem.statement == "":
         raise HTTPException(status_code=400, detail="Statement is empty")
-    if problem.time_restriction <= 0 and problem.time_restriction > 10:
-        raise HTTPException(status_code=400, detail="Time restriction is less or equal to 0")
-    if problem.memory_restriction <= 0 and problem.memory_restriction > 1024:
-        raise HTTPException(status_code=400, detail="Memory restriction is less or equal to 0")
+    if problem.time_restriction <= 0 or problem.time_restriction > 10:
+        raise HTTPException(status_code=400, detail="Time restriction is not in the range from 1 to 10")
+    if problem.memory_restriction <= 0 or problem.memory_restriction > 1024:
+        raise HTTPException(status_code=400, detail="Memory restriction is not in the range from 1 to 1024")
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("""
             INSERT INTO problems (author_user_id, name, statement, input_statement, output_statement, notes, time_restriction, memory_restriction, private)
             VALUES (%(author_user_id)s, %(name)s, %(statement)s, %(input_statement)s, %(output_statement)s, %(notes)s, %(time_restriction)s, %(memory_restriction)s, %(private)s)
@@ -627,7 +656,7 @@ def post_problem(problem: ProblemRequest, authorization: Annotated[str | None, H
 @app.get("/problems/{problem_id}")
 def get_problem(problem_id: int, authorization: Annotated[str | None, Header()] = None) -> JSONResponse:
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("""
             SELECT
                 problems.id AS id,
@@ -661,7 +690,7 @@ def get_problems(start: int = 1, limit: int = 100) -> JSONResponse:
     if limit < 1:
         raise HTTPException(status_code=400, detail="Limit must be greater than or equal 1")
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("""
             SELECT
                 problems.id AS id,
@@ -695,7 +724,7 @@ def get_problems_users(username: str, authorization: Annotated[str | None, Heade
     if only_private:
         filter_conditions += " AND problems.private = 1"
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("""
             SELECT
                 problems.id AS id,
@@ -725,7 +754,7 @@ def get_problems_users(username: str, authorization: Annotated[str | None, Heade
 def put_problem_make_private_or_public(problem_id: int, private_or_public: PrivateOrPublic, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("""
             UPDATE problems
             SET private = %(private_or_public)s
@@ -750,7 +779,7 @@ def check_if_problem_can_be_edited(cursor: MySQLCursorAbstract, problem_id: int,
 @app.get("/problems/{problem_id}/check-if-can-be-edited")
 def get_check_if_problem_can_be_edited(problem_id: int, authorization: Annotated[str | None, Header()] = None) -> JSONResponse:
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         return JSONResponse({
             'can': check_if_problem_can_be_edited(cursor, problem_id, authorization)
         })
@@ -784,7 +813,7 @@ def put_problem(problem_id: int, problem: ProblemRequestUpdate, authorization: A
     if update_set == "":
         return JSONResponse({})
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         if not check_if_problem_can_be_edited(cursor, problem_id, authorization):
             raise HTTPException(status_code=403, detail="This problem cannot be edited or deleted")
         cursor.execute("UPDATE problems SET " + update_set[:-2] + " WHERE id = %(problem_id)s AND author_user_id = %(author_user_id)s", update_dict)
@@ -796,7 +825,7 @@ def put_problem(problem_id: int, problem: ProblemRequestUpdate, authorization: A
 def delete_problem(problem_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         if not check_if_problem_can_be_edited(cursor, problem_id, authorization):
             raise HTTPException(status_code=403, detail="This problem cannot be edited or deleted")
         cursor.execute("""
@@ -820,7 +849,7 @@ def post_test_case(problem_id: int, test_case: TestCaseRequest, authorization: A
         raise HTTPException(status_code=400, detail="Score must be greater than or equal 0")
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         if not check_if_problem_can_be_edited(cursor, problem_id, authorization):
             raise HTTPException(status_code=403, detail="This problem cannot be edited or deleted")
         detect_error_problems(cursor, problem_id, token.id, False, False, True)
@@ -838,7 +867,7 @@ def post_test_case(problem_id: int, test_case: TestCaseRequest, authorization: A
 @app.get("/problems/{problem_id}/test-cases/{test_case_id}")
 def get_test_case(problem_id: int, test_case_id: int, authorization: Annotated[str | None, Header()] = None) -> JSONResponse:
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("""
             SELECT id, problem_id, input, solution, score, opened
             FROM test_cases
@@ -864,7 +893,7 @@ def get_test_cases(problem_id: int, authorization: Annotated[str | None, Header(
     if only_closed:
         filter_conditions += " AND opened = 0"
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("SELECT author_user_id, private FROM problems WHERE id = %(problem_id)s LIMIT 1", {'problem_id': problem_id})
         problem: Any = cursor.fetchone()
         if problem is None:
@@ -891,7 +920,7 @@ def get_problem_full(problem_id: int, authorization: Annotated[str | None, Heade
     if only_closed:
         filter_conditions += " AND opened = 0"
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("""
             SELECT
                 problems.id AS id,
@@ -927,7 +956,7 @@ def get_problem_full(problem_id: int, authorization: Annotated[str | None, Heade
 def put_test_case_make_opened_or_closed(problem_id: int, test_case_id: int, opened_or_closed: OpenedOrClosed, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         if not check_if_problem_can_be_edited(cursor, problem_id, authorization):
             raise HTTPException(status_code=403, detail="This problem cannot be edited or deleted")
         cursor.execute("""
@@ -955,7 +984,7 @@ def put_test_case(problem_id: int, test_case_id: int, test_case: TestCaseRequest
         update_set += "score = %(score)s, "
         update_dict['score'] = test_case.score
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         if not check_if_problem_can_be_edited(cursor, problem_id, authorization):
             raise HTTPException(status_code=403, detail="This problem cannot be edited or deleted")
         cursor.execute(f"""
@@ -972,7 +1001,7 @@ def put_test_case(problem_id: int, test_case_id: int, test_case: TestCaseRequest
 def delete_test_case(problem_id: int, test_case_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         if not check_if_problem_can_be_edited(cursor, problem_id, authorization):
             raise HTTPException(status_code=403, detail="This problem cannot be edited or deleted")
         cursor.execute("""
@@ -987,7 +1016,7 @@ def delete_test_case(problem_id: int, test_case_id: int, authorization: Annotate
 
 def check_submission(submission_id: int, problem_id: int, code: str, language: str, no_realtime: bool, user_id: int) -> None:
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         create_files_result: CreateFilesResult = lib.create_files(submission_id, code, language, 1)
         if create_files_result.status == 0:
             cursor.execute("""
@@ -1074,6 +1103,8 @@ def check_submission(submission_id: int, problem_id: int, code: str, language: s
 
 @app.post("/submissions")
 def submit(submission: SubmissionRequest, authorization: Annotated[str | None, Header()], no_realtime:  bool = False) -> JSONResponse:
+    if cache.get('block_submit') == 'True':
+        raise HTTPException(status_code=403, detail="Submissions are blocked")
     if submission.code == "":
         raise HTTPException(status_code=400, detail="Code cannot be empty")
     if submission.language_name == "":
@@ -1082,7 +1113,7 @@ def submit(submission: SubmissionRequest, authorization: Annotated[str | None, H
         raise HTTPException(status_code=400, detail="Language version cannot be empty")
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         detect_error_problems(cursor, submission.problem_id, token.id, False, True, True)
         cursor.execute("SELECT id FROM languages WHERE name = %(name)s AND version = %(version)s AND supported = 1 LIMIT 1", {'name': submission.language_name, 'version': submission.language_version})
         language: Any = cursor.fetchone()
@@ -1152,7 +1183,7 @@ def submit(submission: SubmissionRequest, authorization: Annotated[str | None, H
 def get_submission(submission_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("SELECT checked FROM submissions WHERE id = %(submission_id)s AND author_user_id = %(author_user_id)s LIMIT 1", {'submission_id': submission_id, 'author_user_id': token.id})
         submission_first: Any = cursor.fetchone()
         if submission_first is None:
@@ -1256,7 +1287,7 @@ async def websocket_endpoint_submissions(websocket: WebSocket, submission_id: in
 @app.get("/submissions/{submission_id}/public")
 def get_submission_public(submission_id: int)-> JSONResponse:
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("""
             SELECT 
                 submissions.id AS id,
@@ -1283,7 +1314,7 @@ def get_submission_public(submission_id: int)-> JSONResponse:
 @app.get("/users/{username}/submissions/public")
 def get_submissions_public_by_user(username: str)-> JSONResponse:
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("SELECT 1 FROM users WHERE username = BINARY %(username)s AND verified = 1 LIMIT 1", {'username': username})
         if cursor.fetchone() is None:
             raise HTTPException(status_code=404, detail="User does not exist")
@@ -1311,7 +1342,7 @@ def get_submissions_public_by_user(username: str)-> JSONResponse:
 @app.get("/users/{username}/submissions/public/problems/{problem_id}")
 def get_submissions_public_by_user_and_problem(username: str, problem_id: int)-> JSONResponse:
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("SELECT 1 FROM users WHERE username = BINARY %(username)s AND verified = 1 LIMIT 1", {'username': username})
         if cursor.fetchone() is None:
             raise HTTPException(status_code=404, detail="User does not exist")
@@ -1342,7 +1373,7 @@ def get_submissions_public_by_user_and_problem(username: str, problem_id: int)->
 @app.get("/problems/{problem_id}/submissions/public")
 def get_submissions_by_problem(problem_id: int, authorization: Annotated[str | None, Header()] = None)-> JSONResponse:
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("SELECT private, author_user_id FROM problems WHERE id = %(id)s LIMIT 1", {'id': problem_id})
         problem: Any = cursor.fetchone()
         if problem is None:
@@ -1376,7 +1407,7 @@ def get_submissions_by_problem(problem_id: int, authorization: Annotated[str | N
 def delete_problem_submissions(problem_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("SELECT author_user_id, private FROM problems WHERE id = %(problem_id)s LIMIT 1", {'problem_id': problem_id})
         problem: Any = cursor.fetchone()
         if problem is None:
@@ -1442,6 +1473,8 @@ def run_debug(debug_submission_id: int, debug_language: str, debug_code: str, de
 
 @app.post("/debug")
 def post_debug(debug: DebugRequest, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+    if cache.get('block_debug') == 'True':
+        raise HTTPException(status_code=403, detail="Debug is blocked")
     if debug.code == "":
         raise HTTPException(status_code=400, detail="Code cannot be empty")
     if debug.language_name == "":
@@ -1450,7 +1483,7 @@ def post_debug(debug: DebugRequest, authorization: Annotated[str | None, Header(
         raise HTTPException(status_code=400, detail="Language version cannot be empty")
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("SELECT id FROM languages WHERE name = %(name)s AND version = %(version)s AND supported = 1 LIMIT 1", {'name': debug.language_name, 'version': debug.language_version})
         language: Any = cursor.fetchone()
         if language is None:
@@ -1469,6 +1502,8 @@ def post_debug(debug: DebugRequest, authorization: Annotated[str | None, Header(
 
 @app.post("/debug/many")
 def post_debug_many(debug: DebugRequestMany, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+    if cache.get('block_debug') == 'True':
+        raise HTTPException(status_code=403, detail="Debug is blocked")
     if debug.code == "":
         raise HTTPException(status_code=400, detail="Code cannot be empty")
     if debug.language_name == "":
@@ -1477,7 +1512,7 @@ def post_debug_many(debug: DebugRequestMany, authorization: Annotated[str | None
         raise HTTPException(status_code=400, detail="Language version cannot be empty")
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("SELECT id FROM languages WHERE name = %(name)s AND version = %(version)s AND supported = 1 LIMIT 1", {'name': debug.language_name, 'version': debug.language_version})
         language: Any = cursor.fetchone()
         if language is None:
@@ -1504,6 +1539,8 @@ def convert_and_validate_datetime(date: str, field_name: str = "") -> datetime:
 
 @app.post("/competitions")
 def post_competition(competition: CompetitionRequest, authorization: Annotated[str | None, Header()], past_times: bool = False) -> JSONResponse:
+    if cache.get('block_competition_creation') == 'True':
+        raise HTTPException(status_code=403, detail="Competition creation is blocked")
     token: Token = decode_token(authorization)
     if competition.name == "":
         raise HTTPException(status_code=400, detail="Name is empty")
@@ -1518,7 +1555,7 @@ def post_competition(competition: CompetitionRequest, authorization: Annotated[s
     if competition.maximum_team_members_number < 1:
         raise HTTPException(status_code=400, detail="Maximum team members number cannot be less than 1")
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("""
             INSERT INTO competitions (author_user_id, name, description, start_time, end_time, private, maximum_team_members_number, auto_confirm_participants)
             VALUES (%(author_user_id)s, %(name)s, %(description)s, %(start_time)s, %(end_time)s, %(private)s, %(maximum_team_members_number)s, %(auto_confirm_participants)s)
@@ -1533,7 +1570,7 @@ def post_competition(competition: CompetitionRequest, authorization: Annotated[s
 @app.get("/competitions/{competition_id}")
 def get_competition(competition_id: int, authorization: Annotated[str | None, Header()] = None) -> JSONResponse:
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("""
             SELECT
                 competitions.id AS id,
@@ -1575,7 +1612,7 @@ def get_competitions(status: str | None = None, start: int = 1, limit: int = 100
     if status not in ["ongoing", "unstarted", "ended", None]:
         raise HTTPException(status_code=400, detail="Invalid status")
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("""
             SELECT
                 competitions.id AS id,
@@ -1612,7 +1649,7 @@ def get_users_competitions_authored(authored_or_participated: AuthoredOrParticip
     if only_private:
         filter_conditions += " AND problems.private = 1"
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         if authored_or_participated is AuthoredOrParticipated.authored:
             cursor.execute("""
                 SELECT
@@ -1678,7 +1715,7 @@ def detect_error_competitions(cursor: MySQLCursorAbstract, competition_id: int, 
 def put_competition_make_private_or_public(competition_id: int, private_or_public: PrivateOrPublic, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("""
             UPDATE competitions
             SET private = %(private_or_public)s
@@ -1703,7 +1740,7 @@ def check_if_competition_can_be_edited(cursor: MySQLCursorAbstract, competition_
 @app.get("/competitions/{competition_id}/check-if-can-be-edited")
 def get_check_if_competition_can_be_edited(competition_id: int, authorization: Annotated[str | None, Header()] = None) -> JSONResponse:
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         return JSONResponse({
             'can': check_if_competition_can_be_edited(cursor, competition_id, authorization)
         })
@@ -1712,7 +1749,7 @@ def get_check_if_competition_can_be_edited(competition_id: int, authorization: A
 def put_competition(competition_id: int, competition: CompetitionRequestUpdate, authorization: Annotated[str | None, Header()], past_times: bool = False) -> JSONResponse:
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         update_set: str = ""
         update_dict: dict[str, Any] = {'competition_id': competition_id, 'author_user_id': token.id}
         if competition.name is not None and competition.name != '':
@@ -1758,7 +1795,7 @@ def put_competition(competition_id: int, competition: CompetitionRequestUpdate, 
 def delete_competition(competition_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         if not check_if_competition_can_be_edited(cursor, competition_id, authorization):
             raise HTTPException(status_code=403, detail="This competition cannot be edited or deleted")
         cursor.execute("""
@@ -1794,7 +1831,7 @@ def post_competition_participant(competition_id: int, participant: CompetitionPa
     if participant.username_or_team_name == "":
         raise HTTPException(status_code=400, detail="Username or team name is empty")
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         if not check_if_competition_can_be_edited(cursor, competition_id, authorization):
             raise HTTPException(status_code=403, detail="This competition cannot be edited or deleted and participants cannot be added")
         author_confirmed: bool = False
@@ -1863,7 +1900,7 @@ def get_competition_participants(competition_id: int, authorization: Annotated[s
     if only_teams:
         filter_conditions += " AND teams.individual = 0"
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("SELECT author_user_id, private FROM competitions WHERE id = %(competition_id)s LIMIT 1", {'competition_id': competition_id})
         competition: Any = cursor.fetchone()
         if competition is None:
@@ -1900,7 +1937,7 @@ def get_competition_participants(competition_id: int, authorization: Annotated[s
 @app.get("/competitions/{competition_id}/participants/users/{username}")
 def get_competition_participant_by_username(competition_id: int, username: str, authorization: Annotated[str | None, Header()] = None) -> JSONResponse:
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("SELECT author_user_id, private FROM competitions WHERE id = %(competition_id)s LIMIT 1", {'competition_id': competition_id})
         competition: Any = cursor.fetchone()
         if competition is None:
@@ -1945,7 +1982,7 @@ def get_competition_participant_by_username(competition_id: int, username: str, 
 def put_competition_participant_confirm_or_decline(competition_id: int, individuals_or_teams: IndividualsOrTeams, username_or_team_name: str, confirm_or_decline: ConfirmOrDecline, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         update_set: str = ""
         cursor.execute("SELECT author_user_id FROM competitions WHERE id = %(competition_id)s LIMIT 1", {'competition_id': competition_id})
         competition: Any = cursor.fetchone()
@@ -1980,7 +2017,7 @@ def put_competition_participant_confirm_or_decline(competition_id: int, individu
 def delete_competition_participant(competition_id: int, individuals_or_teams: IndividualsOrTeams, username_or_team_name: str, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("""
             DELETE competition_participants
             FROM competition_participants
@@ -2009,7 +2046,7 @@ def delete_competition_participant(competition_id: int, individuals_or_teams: In
 def post_competition_problem(competition_id: int, problem: CompetitionProblemsRequest, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("SELECT author_user_id FROM competitions WHERE id = %(competition_id)s LIMIT 1", {'competition_id': competition_id})
         competition: Any = cursor.fetchone()
         if competition is None:
@@ -2031,7 +2068,7 @@ def post_competition_problem(competition_id: int, problem: CompetitionProblemsRe
 @app.get("/competitions/{competition_id}/problems/{problem_id}")
 def get_competition_problem(competition_id: int, problem_id: int, authorization: Annotated[str | None, Header()] = None) -> JSONResponse:
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("SELECT author_user_id, private, IF(NOW() > start_time, 1, 0) AS started, IF(NOW() > end_time, 1, 0) AS ended FROM competitions WHERE id = %(competition_id)s LIMIT 1", {'competition_id': competition_id})
         competition: Any = cursor.fetchone()
         if competition is None:
@@ -2087,7 +2124,7 @@ def get_competition_problem(competition_id: int, problem_id: int, authorization:
 @app.get("/competitions/{competition_id}/problems")
 def get_competition_problems(competition_id: int, authorization: Annotated[str | None, Header()] = None) -> JSONResponse:
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("SELECT author_user_id, private, IF(NOW() > start_time, 1, 0) AS started, IF(NOW() > end_time, 1, 0) AS ended FROM competitions WHERE id = %(competition_id)s LIMIT 1", {'competition_id': competition_id})
         competition: Any = cursor.fetchone()
         if competition is None:
@@ -2142,7 +2179,7 @@ def get_competition_problems(competition_id: int, authorization: Annotated[str |
 def delete_competition_problem(competition_id: int, problem_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("""
             DELETE competition_problems
             FROM competition_problems
@@ -2168,6 +2205,8 @@ def delete_competition_problem(competition_id: int, problem_id: int, authorizati
 
 @app.post("/competitions/{competition_id}/submissions")
 def competition_submit(competition_id: int, submission: SubmissionRequest, authorization: Annotated[str | None, Header()], no_realtime:  bool = False) -> JSONResponse:
+    if cache.get('block_submit') == 'True':
+        raise HTTPException(status_code=403, detail="Submissions are blocked")
     if submission.code == "":
         raise HTTPException(status_code=400, detail="Code cannot be empty")
     if submission.language_name == "":
@@ -2176,7 +2215,7 @@ def competition_submit(competition_id: int, submission: SubmissionRequest, autho
         raise HTTPException(status_code=400, detail="Language version cannot be empty")
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("SELECT id FROM languages WHERE name = %(name)s AND version = %(version)s AND supported = 1 LIMIT 1", {'name': submission.language_name, 'version': submission.language_version})
         language: Any = cursor.fetchone()
         if language is None:
@@ -2280,7 +2319,7 @@ def competition_submit(competition_id: int, submission: SubmissionRequest, autho
 def get_competition_submission(competition_id: int, submission_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("SELECT author_user_id FROM competitions WHERE id = %(competition_id)s LIMIT 1", {'competition_id': competition_id})
         competition: Any = cursor.fetchone()
         if competition is None:
@@ -2370,7 +2409,7 @@ def get_competition_submission(competition_id: int, submission_id: int, authoriz
 def get_competition_submissions_by_team(competition_id: int, individuals_or_teams: IndividualsOrTeams, username_or_team_name: str, authorization: Annotated[str | None, Header()])-> JSONResponse:
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("SELECT 1 FROM competitions WHERE id = %(competition_id)s LIMIT 1", {'competition_id': competition_id})
         competition: Any = cursor.fetchone()
         if competition is None:
@@ -2415,7 +2454,7 @@ def get_competition_submissions_by_team(competition_id: int, individuals_or_team
 def get_competition_submissions_by_team_and_problem(competition_id: int, individuals_or_teams: IndividualsOrTeams, username_or_team_name: str, problem_id: int, authorization: Annotated[str | None, Header()])-> JSONResponse:
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("SELECT 1 FROM competitions WHERE id = %(competition_id)s LIMIT 1", {'competition_id': competition_id})
         competition: Any = cursor.fetchone()
         if competition is None:
@@ -2462,7 +2501,7 @@ def get_competition_submissions_by_team_and_problem(competition_id: int, individ
 @app.get("/competitions/{competition_id}/scoreboard")
 def get_competition_scoreboard(competition_id: int, authorization: Annotated[str | None, Header()] = None) -> JSONResponse:
     cursor: MySQLCursorAbstract
-    with ConnectionCursor(database_config) as cursor:
+    with ConnectionCursor(db_config) as cursor:
         cursor.execute("SELECT author_user_id, private FROM competitions WHERE id = %(id)s LIMIT 1", {'id': competition_id})
         competition: Any = cursor.fetchone()
         if competition is None:

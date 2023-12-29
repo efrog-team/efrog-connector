@@ -109,6 +109,10 @@ class CompetitionParticipantRequest(BaseModel):
 class CompetitionProblemsRequest(BaseModel):
     problem_id: int
 
+class DbOrCache(Enum):
+    db = "db"
+    cache = "cache"
+
 class ActivateOrDeactivate(str, Enum):
     activate = "activate"
     deactivate = "deactivate"
