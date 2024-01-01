@@ -4,11 +4,14 @@ USE db;
 
 CREATE TABLE users (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    username VARCHAR(255)  NOT NULL,
+    username VARCHAR(255) NOT NULL,
     email VARCHAR(255) NOT NULL,
     name VARCHAR(255) NOT NULL,
     password VARCHAR(255) NOT NULL,
     verified BOOLEAN NOT NULL,
+    problems_quota INT UNSIGNED NOT NULL,
+    test_cases_quota INT UNSIGNED NOT NULL,
+    competitions_quota INT UNSIGNED NOT NULL,
     PRIMARY KEY (id),
     UNIQUE KEY (username),
     UNIQUE KEY (email)
@@ -48,6 +51,7 @@ CREATE TABLE competitions (
     private BOOLEAN NOT NULL,
     maximum_team_members_number INT UNSIGNED NOT NULL,
     auto_confirm_participants BOOLEAN NOT NULL,
+    approved BOOLEAN NOT NULL,
     PRIMARY KEY (id),
     FOREIGN KEY (author_user_id) REFERENCES users(id)
 );
@@ -77,6 +81,7 @@ CREATE TABLE problems (
     time_restriction INT UNSIGNED NOT NULL,
     memory_restriction INT UNSIGNED NOT NULL,
     private BOOLEAN NOT NULL,
+    approved BOOLEAN NOT NULL,
     PRIMARY KEY (id),
     FOREIGN KEY (author_user_id) REFERENCES users(id)
 );
@@ -187,11 +192,11 @@ INSERT INTO verdicts (text) VALUES ('Runtime Error');
 INSERT INTO verdicts (text) VALUES ('Compilation Error');
 INSERT INTO verdicts (text) VALUES ('Internal Server Error');
 
-INSERT INTO users (username, email, name, password, verified) VALUES ('admin', 'admin@admin', 'admin', '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918', 1);
+INSERT INTO users (username, email, name, password, verified, problems_quota, test_cases_quota, competitions_quota) VALUES ('admin', 'admin@admin', 'admin', '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918', 1, 19, 94, 5);
 INSERT INTO teams (name, owner_user_id, active, individual) VALUES ('admin', 1, 1, 1);
 INSERT INTO team_members (member_user_id, team_id, coach, confirmed, declined) VALUES (1, 1, 0, 1, 0);
 
-INSERT INTO problems (author_user_id, name, statement, input_statement, output_statement, notes, time_restriction, memory_restriction, private) VALUES (1, 'Square of a number', 'Your are given a number n. Return the square of n.', 'n <= 10^6', 'n ** 2', 'Nothing', 1, 128, 0);
+INSERT INTO problems (author_user_id, name, statement, input_statement, output_statement, notes, time_restriction, memory_restriction, private, approved) VALUES (1, 'Square of a number', 'Your are given a number n. Return the square of n.', 'n <= 10^6', 'n ** 2', 'Nothing', 1, 128, 0, 1);
 INSERT INTO test_cases (problem_id, input, solution, score, opened) VALUES (1, '1', '1', 0, 1);
 INSERT INTO test_cases (problem_id, input, solution, score, opened) VALUES (1, '2', '4', 0, 1);
 INSERT INTO test_cases (problem_id, input, solution, score, opened) VALUES (1, '3', '9', 25, 0);

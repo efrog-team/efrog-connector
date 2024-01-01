@@ -1,1 +1,0 @@
-python3 database_scripts/clear.py

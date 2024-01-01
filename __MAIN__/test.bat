@@ -1,2 +1,0 @@
-pytest
-clear_db

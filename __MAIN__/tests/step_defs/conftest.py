@@ -159,7 +159,7 @@ def wrong_password(data: dict[str, str | int | bool]) -> None:
 
 @then(parsers.parse("equals to {name} user"))
 def equals_user(name: str, names_convert: dict[str, str], response: Response) -> None:
-    assert response.json() == {'username': names_convert[name], 'email': names_convert[name] + '@test', 'name': names_convert[name]}
+    assert response.json() == {'username': names_convert[name], 'email': names_convert[name] + '@test', 'name': names_convert[name], 'problems_quota': 20, 'test_cases_quota': 100, 'competitions_quota': 5}
 
 # Teams -------------------------------------------------------------
 
@@ -410,7 +410,7 @@ def competition(fields: str, name: str, names_convert: dict[str, str], data: dic
         if 'start_time' in fields_list:
             data['start_time'] = '2022-01-01 00:00:00'
         if 'end_time' in fields_list:
-            data['end_time'] = '2024-01-01 00:00:00'
+            data['end_time'] = '2025-01-01 00:00:00'
         if 'private' in fields_list:
             data['private'] = 0
         if 'maximum_team_members_number' in fields_list:
@@ -427,7 +427,7 @@ def competition(fields: str, name: str, names_convert: dict[str, str], data: dic
         if 'start_time' in fields_list:
             data['start_time'] = '2022-01-01 00:00:00'
         if 'end_time' in fields_list:
-            data['end_time'] = '2024-01-01 00:00:00'
+            data['end_time'] = '2025-01-01 00:00:00'
         if 'private' in fields_list:
             data['private'] = 1
         if 'maximum_team_members_number' in fields_list:
@@ -459,7 +459,7 @@ def competition_in_database(name: str, names_convert: dict[str, str]) -> None:
             'name': 'The first public competition',
             'description': 'The first public competition',
             'start_time': '2022-01-01 00:00:00',
-            'end_time': '2024-01-01 00:00:00',
+            'end_time': '2025-01-01 00:00:00',
             'private': 0,
             'maximum_team_members_number': 3,
             'auto_confirm_participants': False
@@ -479,7 +479,7 @@ def competition_in_database(name: str, names_convert: dict[str, str]) -> None:
             'name': 'The first private competition',
             'description': 'The first private competition',
             'start_time': '2022-01-01 00:00:00',
-            'end_time': '2024-01-01 00:00:00',
+            'end_time': '2025-01-01 00:00:00',
             'private': 1,
             'maximum_team_members_number': 3,
             'auto_confirm_participants': False

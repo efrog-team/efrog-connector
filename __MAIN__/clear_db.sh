@@ -1,1 +1,1 @@
-python3 database_scripts/clear.py
+/back-end-venv/bin/python database_scripts/clear.py
