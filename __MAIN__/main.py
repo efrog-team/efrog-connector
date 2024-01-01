@@ -194,7 +194,7 @@ def put_admin_quotas(username: str, quotas: QuotasUpateRequest, set_or_increment
         if quotas.competitions is not None:
             if (user_db['competitions_quota'] if set_or_increment is SetOrIncrement.increment else 0) + quotas.competitions < 0:
                 raise HTTPException(status_code=400, detail="Quota cannot be negative")
-            cursor.execute("UPDATE users SET competitions_quota = %(test_cases_quota)s WHERE username = BINARY %(username)s", {'competitions_quota': (user_db['competitions_quota'] if set_or_increment is SetOrIncrement.increment else 0) + quotas.competitions, 'username': username})
+            cursor.execute("UPDATE users SET competitions_quota = %(competitions_quota)s WHERE username = BINARY %(username)s", {'competitions_quota': (user_db['competitions_quota'] if set_or_increment is SetOrIncrement.increment else 0) + quotas.competitions, 'username': username})
         cursor.execute("SELECT problems_quota AS new_problems_quota, test_cases_quota AS new_test_cases_quota, competitions_quota AS new_competitions_quota FROM users WHERE username = BINARY %(username)s LIMIT 1", {'username': username})
         return JSONResponse(cursor.fetchone())
 
