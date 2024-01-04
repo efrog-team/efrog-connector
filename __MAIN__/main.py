@@ -2134,7 +2134,7 @@ def get_users_competitions_authored(authored_or_participated: AuthoredOrParticip
                 competitions.private AS private,
                 competitions.maximum_team_members_number AS maximum_team_members_number,
                 competitions.auto_confirm_participants AS auto_confirm_participants,
-                competitions.approved AS approved
+                competitions.approved AS approved,
                 teams.name AS username_or_team_name,
                 teams.individual AS individual,
                 competition_participants.author_confirmed AS author_confirmed,
