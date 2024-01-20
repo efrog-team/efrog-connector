@@ -161,7 +161,7 @@ Feature: Problems
         When makes PUT request /problems/{id}/make-public
         Then gets status 200
 
-    Scenario: Check if a problem can be edited that does not exist
+    Scenario: Check if a problem can be deleted that does not exist
         Given username and password of the correct user
         And put into body
         When makes POST request /token
@@ -170,10 +170,10 @@ Feature: Problems
 
         Given id of a non-existing problem
         And put into params
-        When makes GET request /problems/{id}/check-if-can-be-edited
+        When makes GET request /problems/{id}/check-if-can-be-deleted
         Then gets status 404
 
-    Scenario: Check if a private problem can be edited that you are not an author
+    Scenario: Check if a private problem can be deleted that you are not an author
         Given username and password of another user
         And put into body
         When makes POST request /token
@@ -182,10 +182,10 @@ Feature: Problems
 
         Given id of the correct private problem
         And put into params
-        When makes GET request /problems/{id}/check-if-can-be-edited
+        When makes GET request /problems/{id}/check-if-can-be-deleted
         Then gets status 403
     
-    Scenario: Check if a public problem can be edited that you are not an author
+    Scenario: Check if a public problem can be deleted that you are not an author
         Given username and password of another user
         And put into body
         When makes POST request /token
@@ -194,10 +194,10 @@ Feature: Problems
 
         Given id of the correct public problem
         And put into params
-        When makes GET request /problems/{id}/check-if-can-be-edited
+        When makes GET request /problems/{id}/check-if-can-be-deleted
         Then gets status 200
 
-    Scenario: Check if a private problem can be edited
+    Scenario: Check if a private problem can be deleted
         Given username and password of the correct user
         And put into body
         When makes POST request /token
@@ -206,13 +206,13 @@ Feature: Problems
 
         Given id of the correct private problem
         And put into params
-        When makes GET request /problems/{id}/check-if-can-be-edited
+        When makes GET request /problems/{id}/check-if-can-be-deleted
         Then gets status 200
 
-    Scenario: Check if a public problem can be edited
+    Scenario: Check if a public problem can be deleted
         Given id of the correct public problem
         And put into params
-        When makes GET request /problems/{id}/check-if-can-be-edited
+        When makes GET request /problems/{id}/check-if-can-be-deleted
         Then gets status 200
 
     Scenario: Update a problem that does not exist

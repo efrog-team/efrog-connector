@@ -164,6 +164,8 @@ class SubmissionBase(BaseModel):
     language_name: str
     language_version: str
     time_sent: str = Field(description="Datetime in format YYYY-MM-DD hh:mm:ss")
+    problem_edition: int
+    edition_difference: int
 
 class SubmissionPublic(SubmissionBase):
     total_verdict: VerdictSubmission
@@ -256,6 +258,7 @@ class CompetitionBase(BaseModel):
     end_time: str = Field(description="Datetime in format YYYY-MM-DD hh:mm:ss")
     maximum_team_members_number: int
     auto_confirm_participants: bool
+    only_count_submissions_with_zero_edition_difference: bool
 
 class CompetitionCreate(CompetitionBase):
     private: bool

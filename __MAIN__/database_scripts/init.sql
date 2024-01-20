@@ -52,6 +52,7 @@ CREATE TABLE competitions (
     maximum_team_members_number INT UNSIGNED NOT NULL,
     auto_confirm_participants BOOLEAN NOT NULL,
     approved BOOLEAN NOT NULL,
+    only_count_submissions_with_zero_edition_difference BOOLEAN NOT NULL,
     PRIMARY KEY (id),
     FOREIGN KEY (author_user_id) REFERENCES users(id)
 );
@@ -82,6 +83,7 @@ CREATE TABLE problems (
     memory_restriction INT UNSIGNED NOT NULL,
     private BOOLEAN NOT NULL,
     approved BOOLEAN NOT NULL,
+    edition INT UNSIGNED NOT NULL,
     PRIMARY KEY (id),
     FOREIGN KEY (author_user_id) REFERENCES users(id)
 );
@@ -90,6 +92,7 @@ CREATE TABLE competition_problems (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     competition_id BIGINT UNSIGNED NOT NULL,
     problem_id BIGINT UNSIGNED NOT NULL,
+    problem_edition INT UNSIGNED NOT NULL,
     PRIMARY KEY (id),
     FOREIGN KEY (problem_id) REFERENCES problems(id),
     FOREIGN KEY (competition_id) REFERENCES competitions(id),
@@ -134,6 +137,7 @@ CREATE TABLE submissions (
     correct_score INT UNSIGNED NOT NULL,
     total_score INT UNSIGNED NOT NULL,
     total_verdict_id BIGINT UNSIGNED NOT NULL,
+    problem_edition INT UNSIGNED NOT NULL,
     PRIMARY KEY (id),
     FOREIGN KEY (author_user_id) REFERENCES users(id),
     FOREIGN KEY (problem_id) REFERENCES problems(id),
@@ -196,7 +200,7 @@ INSERT INTO users (username, email, name, password, verified, problems_quota, te
 INSERT INTO teams (name, owner_user_id, active, individual) VALUES ('admin', 1, 1, 1);
 INSERT INTO team_members (member_user_id, team_id, coach, confirmed, declined) VALUES (1, 1, 0, 1, 0);
 
-INSERT INTO problems (author_user_id, name, statement, input_statement, output_statement, notes, time_restriction, memory_restriction, private, approved) VALUES (1, 'Square of a number', 'Your are given a number n. Return the square of n.', 'n <= 10^6', 'n ** 2', 'Nothing', 1, 128, 0, 1);
+INSERT INTO problems (author_user_id, name, statement, input_statement, output_statement, notes, time_restriction, memory_restriction, private, approved, edition) VALUES (1, 'Square of a number', 'Your are given a number n. Return the square of n.', 'n <= 10^6', 'n ** 2', 'Nothing', 1, 128, 0, 1, 7);
 INSERT INTO test_cases (problem_id, input, solution, score, opened) VALUES (1, '1', '1', 0, 1);
 INSERT INTO test_cases (problem_id, input, solution, score, opened) VALUES (1, '2', '4', 0, 1);
 INSERT INTO test_cases (problem_id, input, solution, score, opened) VALUES (1, '3', '9', 25, 0);
