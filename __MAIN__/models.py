@@ -259,6 +259,10 @@ class CompetitionBase(BaseModel):
     maximum_team_members_number: int
     auto_confirm_participants: bool
     only_count_submissions_with_zero_edition_difference: bool
+    only_count_solved_or_not: bool
+    count_scores_as_percentages: bool
+    time_penalty_coefficient: float
+    wrong_attempt_penalty: int
 
 class CompetitionCreate(CompetitionBase):
     private: bool
@@ -316,6 +320,8 @@ class CompetitionScoreboardParticipant(BaseModel):
     total_score: int
 
 class CompetitionScoreboard(BaseModel):
+    time_penalty_coefficient: float
+    wrong_attempt_penalty: int
     participants: list[CompetitionScoreboardParticipant]
 
 class DbOrCache(Enum):

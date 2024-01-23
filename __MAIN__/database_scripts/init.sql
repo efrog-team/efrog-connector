@@ -53,6 +53,10 @@ CREATE TABLE competitions (
     auto_confirm_participants BOOLEAN NOT NULL,
     approved BOOLEAN NOT NULL,
     only_count_submissions_with_zero_edition_difference BOOLEAN NOT NULL,
+    only_count_solved_or_not BOOLEAN NOT NULL,
+    count_scores_as_percentages BOOLEAN NOT NULL,
+    time_penalty_coefficient FLOAT(10, 2) NOT NULL,
+    wrong_attempt_penalty INT UNSIGNED NOT NULL,
     PRIMARY KEY (id),
     FOREIGN KEY (author_user_id) REFERENCES users(id)
 );

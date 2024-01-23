@@ -2029,15 +2029,19 @@ def post_competition(competition: CompetitionCreate, authorization: Annotated[st
         raise HTTPException(status_code=400, detail="End time is in the past")
     if competition.maximum_team_members_number < 1:
         raise HTTPException(status_code=400, detail="Maximum team members number cannot be less than 1")
+    if competition.time_penalty_coefficient < 0:
+        raise HTTPException(status_code=400, detail="Time penalty coefficient cannot be less than 0")
+    if competition.wrong_attempt_penalty < 0:
+        raise HTTPException(status_code=400, detail="Wrong attempt penalty cannot be less than 0")
     cursor: MySQLCursorAbstract
     with ConnectionCursor(db_config) as cursor:
         cursor.execute("SELECT competitions_quota FROM users WHERE id = %(id)s LIMIT 1", {'id': token.id})
         if cursor.fetchone()['competitions_quota'] <= 0:
             raise HTTPException(status_code=403, detail="You have used all your competitions creation quota")
         cursor.execute("""
-            INSERT INTO competitions (author_user_id, name, description, start_time, end_time, private, maximum_team_members_number, auto_confirm_participants, approved, only_count_submissions_with_zero_edition_difference)
-            VALUES (%(author_user_id)s, %(name)s, %(description)s, %(start_time)s, %(end_time)s, %(private)s, %(maximum_team_members_number)s, %(auto_confirm_participants)s, 0, %(only_count_submissions_with_zero_edition_difference)s)
-        """, {'author_user_id': token.id, 'name': competition.name, 'description': competition.description, 'start_time': convert_and_validate_datetime(competition.start_time, 'start_time'), 'end_time': convert_and_validate_datetime(competition.end_time, 'end_time'), 'private': competition.private, 'maximum_team_members_number': competition.maximum_team_members_number, 'auto_confirm_participants': competition.auto_confirm_participants, 'only_count_submissions_with_zero_edition_difference': competition.only_count_submissions_with_zero_edition_difference})
+            INSERT INTO competitions (author_user_id, name, description, start_time, end_time, private, maximum_team_members_number, auto_confirm_participants, approved, only_count_submissions_with_zero_edition_difference, only_count_solved_or_not, count_scores_as_percentages, time_penalty_coefficient, wrong_attempt_penalty)
+            VALUES (%(author_user_id)s, %(name)s, %(description)s, %(start_time)s, %(end_time)s, %(private)s, %(maximum_team_members_number)s, %(auto_confirm_participants)s, 0, %(only_count_submissions_with_zero_edition_difference)s, %(only_count_solved_or_not)s, %(count_scores_as_percentages)s, %(time_penalty_coefficient)s, %(wrong_attempt_penalty)s)
+        """, {'author_user_id': token.id, 'name': competition.name, 'description': competition.description, 'start_time': convert_and_validate_datetime(competition.start_time, 'start_time'), 'end_time': convert_and_validate_datetime(competition.end_time, 'end_time'), 'private': competition.private, 'maximum_team_members_number': competition.maximum_team_members_number, 'auto_confirm_participants': competition.auto_confirm_participants, 'only_count_submissions_with_zero_edition_difference': competition.only_count_submissions_with_zero_edition_difference, 'only_count_solved_or_not': competition.only_count_solved_or_not, 'count_scores_as_percentages': competition.count_scores_as_percentages, 'time_penalty_coefficient': competition.time_penalty_coefficient, 'wrong_attempt_penalty': competition.wrong_attempt_penalty})
         competition_id: int | None = cursor.lastrowid
         if competition_id is None:
             raise HTTPException(status_code=500, detail="Internal server error")
@@ -2070,7 +2074,11 @@ def get_competition(competition_id: int, authorization: Annotated[str | None, He
                 competitions.maximum_team_members_number AS maximum_team_members_number,
                 competitions.auto_confirm_participants AS auto_confirm_participants,
                 competitions.approved AS approved,
-                competitions.only_count_submissions_with_zero_edition_difference AS only_count_submissions_with_zero_edition_difference
+                competitions.only_count_submissions_with_zero_edition_difference AS only_count_submissions_with_zero_edition_difference,
+                competitions.only_count_solved_or_not AS only_count_solved_or_not,
+                competitions.count_scores_as_percentages AS count_scores_as_percentages,
+                competitions.time_penalty_coefficient AS time_penalty_coefficient,
+                competitions.wrong_attempt_penalty AS wrong_attempt_penalty
             FROM competitions
             INNER JOIN users ON competitions.author_user_id = users.id
             WHERE competitions.id = %(id)s
@@ -2117,7 +2125,11 @@ def get_competitions(status: str | None = None, start: int = 1, limit: int = 100
                 competitions.maximum_team_members_number AS maximum_team_members_number,
                 competitions.auto_confirm_participants AS auto_confirm_participants,
                 competitions.approved AS approved,
-                competitions.only_count_submissions_with_zero_edition_difference AS only_count_submissions_with_zero_edition_difference
+                competitions.only_count_submissions_with_zero_edition_difference AS only_count_submissions_with_zero_edition_difference,
+                competitions.only_count_solved_or_not AS only_count_solved_or_not,
+                competitions.count_scores_as_percentages AS count_scores_as_percentages,
+                competitions.time_penalty_coefficient AS time_penalty_coefficient,
+                competitions.wrong_attempt_penalty AS wrong_attempt_penalty
             FROM competitions
             INNER JOIN users ON competitions.author_user_id = users.id
             WHERE competitions.private = 0 """ + ("AND competitions.status = %(status)s " if status is not None else "") + ("" if unapproved else "AND competitions.approved = 1 ") + """
@@ -2165,7 +2177,11 @@ def get_users_competitions_authored(authored_or_participated: AuthoredOrParticip
                     competitions.maximum_team_members_number AS maximum_team_members_number,
                     competitions.auto_confirm_participants AS auto_confirm_participants,
                     competitions.approved AS approved,
-                    competitions.only_count_submissions_with_zero_edition_difference AS only_count_submissions_with_zero_edition_difference
+                    competitions.only_count_submissions_with_zero_edition_difference AS only_count_submissions_with_zero_edition_difference,
+                    competitions.only_count_solved_or_not AS only_count_solved_or_not,
+                    competitions.count_scores_as_percentages AS count_scores_as_percentages,
+                    competitions.time_penalty_coefficient AS time_penalty_coefficient,
+                    competitions.wrong_attempt_penalty AS wrong_attempt_penalty
                 FROM competitions
                 INNER JOIN users ON competitions.author_user_id = users.id
                 WHERE competitions.author_user_id = %(user_id)s
@@ -2187,6 +2203,10 @@ def get_users_competitions_authored(authored_or_participated: AuthoredOrParticip
                 competitions.auto_confirm_participants AS auto_confirm_participants,
                 competitions.approved AS approved,
                 competitions.only_count_submissions_with_zero_edition_difference AS only_count_submissions_with_zero_edition_difference,
+                competitions.only_count_solved_or_not AS only_count_solved_or_not,
+                competitions.count_scores_as_percentages AS count_scores_as_percentages,
+                competitions.time_penalty_coefficient AS time_penalty_coefficient,
+                competitions.wrong_attempt_penalty AS wrong_attempt_penalty
                 teams.name AS username_or_team_name,
                 teams.individual AS individual,
                 competition_participants.author_confirmed AS author_confirmed,
@@ -2308,6 +2328,18 @@ def put_competition(competition_id: int, competition: CompetitionUpdate, authori
         if competition.only_count_submissions_with_zero_edition_difference is not None:
             update_set += "only_count_submissions_with_zero_edition_difference = %(only_count_submissions_with_zero_edition_difference)s, "
             update_dict['only_count_submissions_with_zero_edition_difference'] = competition.only_count_submissions_with_zero_edition_difference
+        if competition.only_count_solved_or_not is not None:
+            update_set += "only_count_solved_or_not = %(only_count_solved_or_not)s, "
+            update_dict['only_count_solved_or_not'] = competition.only_count_solved_or_not
+        if competition.count_scores_as_percentages is not None:
+            update_set += "count_scores_as_percentages = %(count_scores_as_percentages)s, "
+            update_dict['count_scores_as_percentages'] = competition.count_scores_as_percentages
+        if competition.time_penalty_coefficient is not None and competition.time_penalty_coefficient >= 0:
+            update_set += "time_penalty_coefficient = %(time_penalty_coefficient)s, "
+            update_dict['time_penalty_coefficient'] = competition.time_penalty_coefficient
+        if competition.wrong_attempt_penalty is not None and competition.wrong_attempt_penalty >= 0:
+            update_set += "wrong_attempt_penalty = %(wrong_attempt_penalty)s, "
+            update_dict['wrong_attempt_penalty'] = competition.wrong_attempt_penalty
         if update_set == "":
             return JSONResponse({})
         if not check_if_competition_can_be_edited(cursor, competition_id, authorization):
@@ -2410,7 +2442,7 @@ def post_competition_participant(competition_id: int, participant: CompetitionPa
             if cursor.fetchone() is not None:
                 raise HTTPException(status_code=409, detail="One of the team members is already a participant of this competition")
         try:
-            cursor.execute("INSERT INTO competition_participants (competition_id, team_id, author_confirmed, author_declined, participant_confirmed, participant_declined) VALUES (%(competition_id)s, %(team_id)s, %(author_confirmed)s, 0, %(participant_confirmed)s, 0)", {'competition_id': competition_id, 'team_id': user_or_team_id, 'author_confirmed': author_confirmed, 'participant_confirmed': participant_confirmed})
+            cursor.execute("INSERT INTO competition_participants (competition_id, team_id, author_confirmed, author_declined, participant_confirmed, participant_declined) VALUES (%(competition_id)s, %(team_id)s, %(author_confirmed)s, 0, %(participant_confirmed)s, 0)",  {'competition_id': competition_id, 'team_id': user_or_team_id, 'author_confirmed': author_confirmed, 'participant_confirmed': participant_confirmed})
         except IntegrityError:
             raise HTTPException(status_code=409, detail="This user or team is already a participant of this competition")
     return JSONResponse({})
@@ -2810,6 +2842,8 @@ def post_competition_submission(competition_id: int, submission: SubmissionCreat
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
     with ConnectionCursor(db_config) as cursor:
+        cursor.execute("SELECT edition FROM problems WHERE id = %(id)s LIMIT 1", {'id': submission.problem_id})
+        problem: Any = cursor.fetchone()
         cursor.execute("SELECT id FROM languages WHERE name = %(name)s AND version = %(version)s AND supported = 1 LIMIT 1", {'name': submission.language_name, 'version': submission.language_version})
         language: Any = cursor.fetchone()
         if language is None:
@@ -2849,9 +2883,9 @@ def post_competition_submission(competition_id: int, submission: SubmissionCreat
             raise HTTPException(status_code=403, detail="You already have a testing submission or debug")
         testing_users[token.id] = True
         cursor.execute("""
-            INSERT INTO submissions (author_user_id, problem_id, code, language_id, time_sent, checked, compiled, compilation_details, correct_score, total_score, total_verdict_id)
-            VALUES (%(author_user_id)s, %(problem_id)s, %(code)s, %(language_id)s, NOW(), 0, 0, '', 0, 0, 1)
-        """, {'author_user_id': token.id, 'problem_id': submission.problem_id, 'code': submission.code, 'language_id': language['id']})
+            INSERT INTO submissions (author_user_id, problem_id, code, language_id, time_sent, checked, compiled, compilation_details, correct_score, total_score, total_verdict_id, problem_edition)
+            VALUES (%(author_user_id)s, %(problem_id)s, %(code)s, %(language_id)s, NOW(), 0, 0, '', 0, 0, 1, %(problem_edition)s)
+        """, {'author_user_id': token.id, 'problem_id': submission.problem_id, 'code': submission.code, 'language_id': language['id'], 'problem_edition': problem['edition']})
         submission_id: int | None = cursor.lastrowid
         if submission_id is None:
             raise HTTPException(status_code=500, detail="Internal server error")
@@ -3120,7 +3154,7 @@ def get_competition_submissions_by_participant_and_problem(competition_id: int, 
 def get_competition_scoreboard(competition_id: int, authorization: Annotated[str | None, Header()] = None) -> JSONResponse:
     cursor: MySQLCursorAbstract
     with ConnectionCursor(db_config) as cursor:
-        cursor.execute("SELECT author_user_id, private, only_count_submissions_with_zero_edition_difference FROM competitions WHERE id = %(id)s LIMIT 1", {'id': competition_id})
+        cursor.execute("SELECT author_user_id, start_time, private, only_count_submissions_with_zero_edition_difference, only_count_solved_or_not, count_scores_as_percentages, time_penalty_coefficient, wrong_attempt_penalty FROM competitions WHERE id = %(id)s LIMIT 1", {'id': competition_id})
         competition: Any = cursor.fetchone()
         if competition is None:
             raise HTTPException(status_code=404, detail="Competition does not exist")
@@ -3164,8 +3198,13 @@ def get_competition_scoreboard(competition_id: int, authorization: Annotated[str
                 'problems': []
             })
             total_score: int = 0
+            total_penalty: int = 0
             only_none: bool = True
             for problem in problems:
+                result: dict[str, Any] = {
+                    'score': None,
+                    'penalty': 0
+                }
                 cursor.execute("""
                     SELECT
                         MAX(submissions.correct_score) AS score
@@ -3174,18 +3213,53 @@ def get_competition_scoreboard(competition_id: int, authorization: Annotated[str
                     INNER JOIN competitions ON competition_submissions.competition_id = competitions.id
                     WHERE competitions.id = %(competition_id)s AND competition_submissions.team_id = %(team_id)s AND submissions.problem_id = %(problem_id)s AND submissions.time_sent BETWEEN competitions.start_time AND competitions.end_time
                 """ + " AND submissions.problem_edition = %(problem_edition)s" if competition['only_count_submissions_with_zero_edition_difference'] else '', {'competition_id': competition_id, 'team_id': team['id'], 'problem_id': problem['id'], 'problem_edition': problem['edition']})
-                score: Any = cursor.fetchone()
-                if score is None:
-                    score = {'score': None}
+                result['score'] = cursor.fetchone()['score']
+                if result['score'] is not None:
+                    cursor.execute("""
+                        SELECT
+                            submissions.total_score AS total_score,
+                            submissions.time_sent AS time_sent
+                        FROM submissions
+                        INNER JOIN competition_submissions ON submissions.id = competition_submissions.submission_id
+                        INNER JOIN competitions ON competition_submissions.competition_id = competitions.id
+                        WHERE competitions.id = %(competition_id)s AND competition_submissions.team_id = %(team_id)s AND submissions.problem_id = %(problem_id)s AND submissions.time_sent BETWEEN competitions.start_time AND competitions.end_time AND submissions.correct_score = %(maximum_score)s
+                    """ + " AND submissions.problem_edition = %(problem_edition)s" if competition['only_count_submissions_with_zero_edition_difference'] else '', {'competition_id': competition_id, 'team_id': team['id'], 'problem_id': problem['id'], 'problem_edition': problem['edition'], 'maximum_score': result['score']})
+                    total_score_time_sent: Any = cursor.fetchone()
+                    if competition['only_count_solved_or_not'] and competition['count_scores_as_percentages']:
+                        result['score'] = 100 if result['score'] == total_score_time_sent['total_score'] else 0
+                    elif competition['only_count_solved_or_not']:
+                        result['score'] = 1 if result['score'] == total_score_time_sent['total_score'] else 0
+                    elif competition['count_scores_as_percentages']:
+                        value: float = (result['score'] / total_score_time_sent['total_score']) * 100
+                        result['score'] = int(value) if value - int(value) < 0.5 else int(value) + 1
+                    else:
+                        result['score'] = result['score']
+                    if result['score'] == total_score_time_sent['total_score']:
+                        result['penalty'] = int(((datetime.strptime(total_score_time_sent['time_sent'], "%Y-%m-%d %H:%M:%S") - datetime.strptime(competition['start_time'], "%Y-%m-%d %H:%M:%S")).seconds // 60) * competition['time_penalty_coefficient'])
+                        cursor.execute("""
+                            SELECT
+                                COUNT(1) AS wrong_attempts
+                            FROM submissions
+                            INNER JOIN competition_submissions ON submissions.id = competition_submissions.submission_id
+                            INNER JOIN competitions ON competition_submissions.competition_id = competitions.id
+                            WHERE competitions.id = %(competition_id)s AND competition_submissions.team_id = %(team_id)s AND submissions.problem_id = %(problem_id)s AND submissions.time_sent BETWEEN competitions.start_time AND %(correct_submission_time)s
+                        """ + " AND submissions.problem_edition = %(problem_edition)s" if competition['only_count_submissions_with_zero_edition_difference'] else '', {'competition_id': competition_id, 'team_id': team['id'], 'problem_id': problem['id'], 'problem_edition': problem['edition'], 'correct_submission_time': datetime.strptime(total_score_time_sent['time_sent'], "%Y-%m-%d %H:%M:%S")})
+                        wrong_attempts: Any = cursor.fetchone()
+                        result['penalty'] += wrong_attempts['wrong_attempts'] * competition['wrong_attempt_penalty']
                 results[-1]['problems'].append({
                     'id': problem['id'],
                     'name': problem['name'],
                     'edition': problem['edition'],
-                    'best_score': score['score']
+                    'best_score': result['score'],
+                    'penalty': result['penalty']
                 })
-                total_score += 0 if score['score'] is None else score['score']
-                only_none = only_none and score['score'] is None
+                total_score += 0 if result['score'] is None else result['score']
+                total_penalty += result['penalty']
+                only_none = only_none and result['score'] is None
             results[-1]['total_score'] = None if only_none else total_score
+            results[-1]['total_penalty'] = total_penalty
         return JSONResponse({
-            'participants': sorted(results, key=lambda x: -1 if x['total_score'] is None else x['total_score'], reverse=True)
+            'time_penalty_coefficient': competition['time_penalty_coefficient'],
+            'wrong_attempt_penalty': competition['wrong_attempt_penalty'],
+            'participants': sorted(results, key=lambda x: (-1 if x['total_score'] is None else x['total_score'], -x['total_penalty']), reverse=True)
         })

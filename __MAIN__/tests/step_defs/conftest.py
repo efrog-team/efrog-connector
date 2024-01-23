@@ -397,7 +397,7 @@ def submission(fields: str, name: str, names_convert: dict[str, str], data: dict
 def competition(fields: str, name: str, names_convert: dict[str, str], data: dict[str, str | int | bool]) -> None:
     fields_list: list[str] = []
     if fields == "all data":
-        fields_list = ['name', 'description', 'start_time', 'end_time', 'private', 'maximum_team_members_number', 'auto_confirm_participants', 'only_count_submissions_with_zero_edition_difference']
+        fields_list = ['name', 'description', 'start_time', 'end_time', 'private', 'maximum_team_members_number', 'auto_confirm_participants', 'only_count_submissions_with_zero_edition_difference', 'only_count_solved_or_not', 'count_scores_as_percentages', 'time_penalty_coefficient', 'wrong_attempt_penalty']
     else:
         fields_list = fields.replace(" and ", ", ").split(", ")
     if name == "the correct public":
@@ -419,6 +419,14 @@ def competition(fields: str, name: str, names_convert: dict[str, str], data: dic
             data['auto_confirm_participants'] = False
         if 'only_count_submissions_with_zero_edition_difference' in fields_list:
             data['only_count_submissions_with_zero_edition_difference'] = False
+        if 'only_count_solved_or_not' in fields_list:
+            data['only_count_solved_or_not'] = False
+        if 'count_scores_as_percentages' in fields_list:
+            data['count_scores_as_percentages'] = False
+        if 'time_penalty_coefficient' in fields_list:
+            data['time_penalty_coefficient'] = False
+        if 'wrong_attempt_penalty' in fields_list:
+            data['wrong_attempt_penalty'] = False
     elif name == "the correct private":
         if 'id' in fields_list:
             data['id'] = 2
@@ -438,6 +446,14 @@ def competition(fields: str, name: str, names_convert: dict[str, str], data: dic
             data['auto_confirm_participants'] = False
         if 'only_count_submissions_with_zero_edition_difference' in fields_list:
             data['only_count_submissions_with_zero_edition_difference'] = False
+        if 'only_count_solved_or_not' in fields_list:
+            data['only_count_solved_or_not'] = False
+        if 'count_scores_as_percentages' in fields_list:
+            data['count_scores_as_percentages'] = False
+        if 'time_penalty_coefficient' in fields_list:
+            data['time_penalty_coefficient'] = False
+        if 'wrong_attempt_penalty' in fields_list:
+            data['wrong_attempt_penalty'] = False
     else:
         if 'id' in fields_list:
             data['id'] = 3
@@ -457,6 +473,14 @@ def competition(fields: str, name: str, names_convert: dict[str, str], data: dic
             data['auto_confirm_participants'] = False
         if 'only_count_submissions_with_zero_edition_difference' in fields_list:
             data['only_count_submissions_with_zero_edition_difference'] = False
+        if 'only_count_solved_or_not' in fields_list:
+            data['only_count_solved_or_not'] = False
+        if 'count_scores_as_percentages' in fields_list:
+            data['count_scores_as_percentages'] = False
+        if 'time_penalty_coefficient' in fields_list:
+            data['time_penalty_coefficient'] = False
+        if 'wrong_attempt_penalty' in fields_list:
+            data['wrong_attempt_penalty'] = False
 
 @then(parsers.parse("add {name} competition to the database"))
 def competition_in_database(name: str, names_convert: dict[str, str]) -> None:
@@ -469,7 +493,11 @@ def competition_in_database(name: str, names_convert: dict[str, str]) -> None:
             'private': 0,
             'maximum_team_members_number': 3,
             'auto_confirm_participants': False,
-            'only_count_submissions_with_zero_edition_difference': False
+            'only_count_submissions_with_zero_edition_difference': False,
+            'only_count_solved_or_not': False,
+            'count_scores_as_percentages': False,
+            'time_penalty_coefficient': False,
+            'wrong_attempt_penalty': False
         }, headers={
             'Authorization': client.post('/token', json={
                 'username': "correct",
@@ -490,7 +518,11 @@ def competition_in_database(name: str, names_convert: dict[str, str]) -> None:
             'private': 1,
             'maximum_team_members_number': 3,
             'auto_confirm_participants': False,
-            'only_count_submissions_with_zero_edition_difference': False
+            'only_count_submissions_with_zero_edition_difference': False,
+            'only_count_solved_or_not': False,
+            'count_scores_as_percentages': False,
+            'time_penalty_coefficient': False,
+            'wrong_attempt_penalty': False
         }, headers={
             'Authorization': client.post('/token', json={
                 'username': "correct",
@@ -506,7 +538,11 @@ def competition_in_database(name: str, names_convert: dict[str, str]) -> None:
             'private': 0,
             'maximum_team_members_number': 3,
             'auto_confirm_participants': False,
-            'only_count_submissions_with_zero_edition_difference': False
+            'only_count_submissions_with_zero_edition_difference': False,
+            'only_count_solved_or_not': False,
+            'count_scores_as_percentages': False,
+            'time_penalty_coefficient': False,
+            'wrong_attempt_penalty': False
         }, headers={
             'Authorization': client.post('/token', json={
                 'username': "correct",
