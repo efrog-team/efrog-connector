@@ -237,7 +237,7 @@ def post_token(user: UserToken) -> JSONResponse:
 
 def send_verification_token(id: int, username: str, email: str) -> None:
     token: str = encode_token(id, username, 'email_verification', timedelta(days=1))
-    msg = MIMEText(f"Your email verification token is:\n\n{token}\n\n(You can put it here: https://auth.efrog.pp.ua/en/verify-email)\n\n\nВаш токен для верифікації пошти:\n\n{token}\n\n(Ви можете його ввести тут: https://auth.efrog.pp.ua/uk/verify-email)")
+    msg = MIMEText(f"Your email verification link:\n\nhttps://auth.efrog.pp.ua/en/verify-email?token={token}\n\n(Or you can use this token directly:\n\n{token}\n\nAnd put it here: https://auth.efrog.pp.ua/en/verify-email)\n\n\nВаше посилання для верифікації пошти:\n\nhttps://auth.efrog.pp.ua/uk/verify-email?token={token}\n\n(Або ви можете використати цей токен напряму:\n\n{token}\n\nТа ввести його тут: https://auth.efrog.pp.ua/uk/verify-email)")
     msg['Subject'] = "Email verification"
     msg['From'] = email_config['EMAIL']
     msg['To'] = email
@@ -448,7 +448,7 @@ def get_password_reset_token(email: str) -> JSONResponse:
         if user is None:
             raise HTTPException(status_code=404, detail="User does not exist")
         token: str = encode_token(user['id'], user['username'], 'password_reset', timedelta(days=1))
-        msg = MIMEText(f"Your password reset token is:\n\n{token}\n\nВаш токен для скидання паролю:\n\n{token}\n\n")
+        msg = MIMEText(f"Your password reset link:\n\nhttps://auth.efrog.pp.ua/en/change-password?token={token}\n\n(Or you can use this token directly:\n\n{token}\n\nAnd put it here: https://auth.efrog.pp.ua/en/change-password)\n\n\nВаше посилання для скидання паролю:\n\nhttps://auth.efrog.pp.ua/uk/change-password?token={token}\n\n(Або ви можете використати цей токен напряму:\n\n{token}\n\nТа ввести його тут: https://auth.efrog.pp.ua/uk/change-password)")
         msg['Subject'] = "Password reset"
         msg['From'] = email_config['EMAIL']
         msg['To'] = email
@@ -3198,11 +3198,12 @@ def get_competition_scoreboard(competition_id: int, authorization: Annotated[str
                 'problems': []
             })
             total_score: int = 0
-            total_penalty: int = 0
+            total_penalty_score: int = 0
             only_none: bool = True
             for problem in problems:
                 score: int | None = None
-                penalty: int = 0
+                penalty_minutes: int = 0
+                penalty_score: int = 0
                 attempts: int = 0
                 cursor.execute("""
                     SELECT
@@ -3235,7 +3236,8 @@ def get_competition_scoreboard(competition_id: int, authorization: Annotated[str
                     else:
                         score = score
                     if score == total_score_time_sent['total_score']:
-                        score = int(((datetime.strptime(total_score_time_sent['time_sent'], "%Y-%m-%d %H:%M:%S") - datetime.strptime(competition['start_time'], "%Y-%m-%d %H:%M:%S")).seconds // 60) * competition['time_penalty_coefficient'])
+                        penalty_minutes = (datetime.strptime(total_score_time_sent['time_sent'], "%Y-%m-%d %H:%M:%S") - datetime.strptime(competition['start_time'], "%Y-%m-%d %H:%M:%S")).seconds // 60
+                        score = int(penalty_minutes * competition['time_penalty_coefficient'])
                         cursor.execute("""
                             SELECT
                                 COUNT(1) AS wrong_attempts
@@ -3245,23 +3247,24 @@ def get_competition_scoreboard(competition_id: int, authorization: Annotated[str
                             WHERE competitions.id = %(competition_id)s AND competition_submissions.team_id = %(team_id)s AND submissions.problem_id = %(problem_id)s AND submissions.time_sent BETWEEN competitions.start_time AND %(correct_submission_time)s
                         """ + " AND submissions.problem_edition = %(problem_edition)s" if competition['only_count_submissions_with_zero_edition_difference'] else '', {'competition_id': competition_id, 'team_id': team['id'], 'problem_id': problem['id'], 'problem_edition': problem['edition'], 'correct_submission_time': datetime.strptime(total_score_time_sent['time_sent'], "%Y-%m-%d %H:%M:%S")})
                         wrong_attempts: Any = cursor.fetchone()
-                        penalty += wrong_attempts['wrong_attempts'] * competition['wrong_attempt_penalty']
+                        penalty_score += wrong_attempts['wrong_attempts'] * competition['wrong_attempt_penalty']
                         attempts += wrong_attempts['wrong_attempts']
                 results[-1]['problems'].append({
                     'id': problem['id'],
                     'name': problem['name'],
                     'edition': problem['edition'],
                     'best_score': score,
-                    'penalty': penalty,
+                    'penalty_minutes': penalty_minutes,
+                    'penalty_score': penalty_score,
                     'attempts': attempts,
                 })
                 total_score += 0 if score is None else score
-                total_penalty += penalty
+                total_penalty_score += penalty_score
                 only_none = only_none and score is None
             results[-1]['total_score'] = None if only_none else total_score
-            results[-1]['total_penalty'] = total_penalty
+            results[-1]['total_penalty_score'] = total_penalty_score
         return JSONResponse({
             'time_penalty_coefficient': competition['time_penalty_coefficient'],
             'wrong_attempt_penalty': competition['wrong_attempt_penalty'],
-            'participants': sorted(results, key=lambda x: (-1 if x['total_score'] is None else x['total_score'], -x['total_penalty']), reverse=True)
+            'participants': sorted(results, key=lambda x: (-1 if x['total_score'] is None else x['total_score'], -x['total_penalty_score']), reverse=True)
         })

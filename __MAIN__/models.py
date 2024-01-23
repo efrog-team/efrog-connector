@@ -313,7 +313,8 @@ class CompetitionScoreboardProblem(BaseModel):
     name: str
     edition: int
     best_score: int | None
-    penalty: int
+    penalty_minutes: int
+    penalty_score: int
     attempts: int
 
 class CompetitionScoreboardParticipant(BaseModel):
@@ -321,6 +322,7 @@ class CompetitionScoreboardParticipant(BaseModel):
     individual: bool
     problems: list[CompetitionScoreboardProblem]
     total_score: int
+    total_penalty_score: int
 
 class CompetitionScoreboard(BaseModel):
     time_penalty_coefficient: float
