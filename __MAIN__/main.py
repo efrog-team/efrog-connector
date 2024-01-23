@@ -3223,7 +3223,7 @@ def get_competition_scoreboard(competition_id: int, authorization: Annotated[str
                         INNER JOIN competition_submissions ON submissions.id = competition_submissions.submission_id
                         INNER JOIN competitions ON competition_submissions.competition_id = competitions.id
                         WHERE competitions.id = %(competition_id)s AND competition_submissions.team_id = %(team_id)s AND submissions.problem_id = %(problem_id)s AND submissions.time_sent BETWEEN competitions.start_time AND competitions.end_time AND submissions.correct_score = %(maximum_score)s
-                    """ + " AND submissions.problem_edition = %(problem_edition)s" if competition['only_count_submissions_with_zero_edition_difference'] else '', {'competition_id': competition_id, 'team_id': team['id'], 'problem_id': problem['id'], 'problem_edition': problem['edition'], 'maximum_score': result['score']})
+                    """ + " AND submissions.problem_edition = %(problem_edition)s" if competition['only_count_submissions_with_zero_edition_difference'] else '', {'competition_id': competition_id, 'team_id': team['id'], 'problem_id': problem['id'], 'problem_edition': problem['edition'], 'maximum_score': score})
                     total_score_time_sent: Any = cursor.fetchone()
                     if competition['only_count_solved_or_not'] and competition['count_scores_as_percentages']:
                         score = 100 if score == total_score_time_sent['total_score'] else 0
