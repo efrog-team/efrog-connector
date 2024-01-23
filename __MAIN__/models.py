@@ -311,7 +311,10 @@ class CompetitionProblemsCreate(BaseModel):
 class CompetitionScoreboardProblem(BaseModel):
     id: int
     name: str
+    edition: int
     best_score: int | None
+    penalty: int
+    attempts: int
 
 class CompetitionScoreboardParticipant(BaseModel):
     username_or_team_name: str

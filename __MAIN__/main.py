@@ -3201,10 +3201,9 @@ def get_competition_scoreboard(competition_id: int, authorization: Annotated[str
             total_penalty: int = 0
             only_none: bool = True
             for problem in problems:
-                result: dict[str, Any] = {
-                    'score': None,
-                    'penalty': 0
-                }
+                score: int | None = None
+                penalty: int = 0
+                attempts: int = 0
                 cursor.execute("""
                     SELECT
                         MAX(submissions.correct_score) AS score
@@ -3213,8 +3212,9 @@ def get_competition_scoreboard(competition_id: int, authorization: Annotated[str
                     INNER JOIN competitions ON competition_submissions.competition_id = competitions.id
                     WHERE competitions.id = %(competition_id)s AND competition_submissions.team_id = %(team_id)s AND submissions.problem_id = %(problem_id)s AND submissions.time_sent BETWEEN competitions.start_time AND competitions.end_time
                 """ + " AND submissions.problem_edition = %(problem_edition)s" if competition['only_count_submissions_with_zero_edition_difference'] else '', {'competition_id': competition_id, 'team_id': team['id'], 'problem_id': problem['id'], 'problem_edition': problem['edition']})
-                result['score'] = cursor.fetchone()['score']
-                if result['score'] is not None:
+                score = cursor.fetchone()['score']
+                if score is not None:
+                    attempts += 1
                     cursor.execute("""
                         SELECT
                             submissions.total_score AS total_score,
@@ -3226,16 +3226,16 @@ def get_competition_scoreboard(competition_id: int, authorization: Annotated[str
                     """ + " AND submissions.problem_edition = %(problem_edition)s" if competition['only_count_submissions_with_zero_edition_difference'] else '', {'competition_id': competition_id, 'team_id': team['id'], 'problem_id': problem['id'], 'problem_edition': problem['edition'], 'maximum_score': result['score']})
                     total_score_time_sent: Any = cursor.fetchone()
                     if competition['only_count_solved_or_not'] and competition['count_scores_as_percentages']:
-                        result['score'] = 100 if result['score'] == total_score_time_sent['total_score'] else 0
+                        score = 100 if score == total_score_time_sent['total_score'] else 0
                     elif competition['only_count_solved_or_not']:
-                        result['score'] = 1 if result['score'] == total_score_time_sent['total_score'] else 0
+                        score = 1 if score == total_score_time_sent['total_score'] else 0
                     elif competition['count_scores_as_percentages']:
-                        value: float = (result['score'] / total_score_time_sent['total_score']) * 100
-                        result['score'] = int(value) if value - int(value) < 0.5 else int(value) + 1
+                        value: float = (score / total_score_time_sent['total_score']) * 100
+                        score = int(value) if value - int(value) < 0.5 else int(value) + 1
                     else:
-                        result['score'] = result['score']
-                    if result['score'] == total_score_time_sent['total_score']:
-                        result['penalty'] = int(((datetime.strptime(total_score_time_sent['time_sent'], "%Y-%m-%d %H:%M:%S") - datetime.strptime(competition['start_time'], "%Y-%m-%d %H:%M:%S")).seconds // 60) * competition['time_penalty_coefficient'])
+                        score = score
+                    if score == total_score_time_sent['total_score']:
+                        score = int(((datetime.strptime(total_score_time_sent['time_sent'], "%Y-%m-%d %H:%M:%S") - datetime.strptime(competition['start_time'], "%Y-%m-%d %H:%M:%S")).seconds // 60) * competition['time_penalty_coefficient'])
                         cursor.execute("""
                             SELECT
                                 COUNT(1) AS wrong_attempts
@@ -3245,17 +3245,19 @@ def get_competition_scoreboard(competition_id: int, authorization: Annotated[str
                             WHERE competitions.id = %(competition_id)s AND competition_submissions.team_id = %(team_id)s AND submissions.problem_id = %(problem_id)s AND submissions.time_sent BETWEEN competitions.start_time AND %(correct_submission_time)s
                         """ + " AND submissions.problem_edition = %(problem_edition)s" if competition['only_count_submissions_with_zero_edition_difference'] else '', {'competition_id': competition_id, 'team_id': team['id'], 'problem_id': problem['id'], 'problem_edition': problem['edition'], 'correct_submission_time': datetime.strptime(total_score_time_sent['time_sent'], "%Y-%m-%d %H:%M:%S")})
                         wrong_attempts: Any = cursor.fetchone()
-                        result['penalty'] += wrong_attempts['wrong_attempts'] * competition['wrong_attempt_penalty']
+                        penalty += wrong_attempts['wrong_attempts'] * competition['wrong_attempt_penalty']
+                        attempts += wrong_attempts['wrong_attempts']
                 results[-1]['problems'].append({
                     'id': problem['id'],
                     'name': problem['name'],
                     'edition': problem['edition'],
-                    'best_score': result['score'],
-                    'penalty': result['penalty']
+                    'best_score': score,
+                    'penalty': penalty,
+                    'attempts': attempts,
                 })
-                total_score += 0 if result['score'] is None else result['score']
-                total_penalty += result['penalty']
-                only_none = only_none and result['score'] is None
+                total_score += 0 if score is None else score
+                total_penalty += penalty
+                only_none = only_none and score is None
             results[-1]['total_score'] = None if only_none else total_score
             results[-1]['total_penalty'] = total_penalty
         return JSONResponse({
