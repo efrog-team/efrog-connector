@@ -107,6 +107,7 @@ class ProblemFull(ProblemBase):
     author_user_username: str
     private: bool
     approved: bool
+    solved: bool
 
 class ProblemsFull(BaseModel):
     problems: list[ProblemFull]
@@ -313,6 +314,7 @@ class CompetitionScoreboardProblem(BaseModel):
     name: str
     edition: int
     best_score: int | None
+    solved: bool
     penalty_minutes: int
     penalty_score: int
     attempts: int

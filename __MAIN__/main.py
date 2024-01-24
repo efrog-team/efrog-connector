@@ -940,13 +940,19 @@ def get_problem(problem_id: int, authorization: Annotated[str | None, Header()] 
             token: Token = decode_token(authorization)
             if token.username != problem['author_user_username']:
                 raise HTTPException(status_code=403, detail="You are not the author of this private problem")
+        if authorization is not None and authorization != '':
+            token: Token = decode_token(authorization)
+            cursor.execute("SELECT 1 FROM submissions WHERE problem_id = %(problem_id)s AND author_user_id = %(author_user_id)s AND problem_edition = %(problem_edition)s AND correct_score = total_score LIMIT 1", {'problem_id': problem_id, 'author_user_id': token.id, 'problem_edition': problem['edition']})
+            problem['solved'] = cursor.fetchone() is not None
+        else:
+            problem['solved'] = None
         return JSONResponse(problem)
 
 @app.get("/problems", tags=["Problems"], description="Get all public problems", responses={
     200: { 'model': ProblemsFull, 'description': "All good" },
     400: { 'model': Error, 'description': "Invalid data" }
 })
-def get_problems(start: int = 1, limit: int = 100, unapproved: bool = False) -> JSONResponse:
+def get_problems(start: int = 1, limit: int = 100, unapproved: bool = False, authorization: Annotated[str | None, Header()] = None) -> JSONResponse:
     if start < 1:
         raise HTTPException(status_code=400, detail="Start must be greater than or equal 1")
     if limit < 1:
@@ -972,8 +978,16 @@ def get_problems(start: int = 1, limit: int = 100, unapproved: bool = False) -> 
             WHERE problems.private = 0 """ + ("" if unapproved else "AND problems.approved = 1 ") + """
             LIMIT %(limit)s OFFSET %(start)s
         """, {'limit': limit, 'start': start - 1})
+        problems: list[Any] = list(cursor.fetchall())
+        for problem in problems:
+            if authorization is not None and authorization != '':
+                token: Token = decode_token(authorization)
+                cursor.execute("SELECT 1 FROM submissions WHERE problem_id = %(problem_id)s AND author_user_id = %(author_user_id)s AND problem_edition = %(problem_edition)s AND correct_score = total_score LIMIT 1", {'problem_id': problem['id'], 'author_user_id': token.id, 'problem_edition': problem['edition']})
+                problem['solved'] = cursor.fetchone() is not None
+            else:
+                problem['solved'] = None
         return JSONResponse({
-            'problems': list(cursor.fetchall())
+            'problems': problems
         })
 
 @app.get("/users/{username}/problems", tags=["Problems", "Users"], description="Get all problems owned by a user", responses={
@@ -1021,6 +1035,13 @@ def get_problems_users(username: str, authorization: Annotated[str | None, Heade
             cursor.execute("SELECT 1 FROM users WHERE username = BINARY %(username)s AND verified = 1 LIMIT 1", {'username': username})
             if cursor.fetchone() is None:
                 raise HTTPException(status_code=404, detail="User does not exist")
+        for problem in problems:
+            if authorization is not None and authorization != '':
+                token: Token = decode_token(authorization)
+                cursor.execute("SELECT 1 FROM submissions WHERE problem_id = %(problem_id)s AND author_user_id = %(author_user_id)s AND problem_edition = %(problem_edition)s AND correct_score = total_score LIMIT 1", {'problem_id': problem['id'], 'author_user_id': token.id, 'problem_edition': problem['edition']})
+                problem['solved'] = cursor.fetchone() is not None
+            else:
+                problem['solved'] = None
         return JSONResponse({
             'problems': problems
         })
@@ -1300,6 +1321,12 @@ def get_problem_full(problem_id: int, authorization: Annotated[str | None, Heade
             token: Token = decode_token(authorization)
             if token.username != problem['author_user_username']:
                 raise HTTPException(status_code=403, detail="You are not the author of this private problem")
+        if authorization is not None and authorization != '':
+            token: Token = decode_token(authorization)
+            cursor.execute("SELECT 1 FROM submissions WHERE problem_id = %(problem_id)s AND author_user_id = %(author_user_id)s AND problem_edition = %(problem_edition)s AND correct_score = total_score LIMIT 1", {'problem_id': problem_id, 'author_user_id': token.id, 'problem_edition': problem['edition']})
+            problem['solved'] = cursor.fetchone() is not None
+        else:
+            problem['solved'] = None
         cursor.execute("""
             SELECT id, problem_id, input, solution, score, opened
             FROM test_cases
@@ -2673,27 +2700,28 @@ def post_competition_problem(competition_id: int, problem: CompetitionProblemsCr
 def get_competition_problem(competition_id: int, problem_id: int, authorization: Annotated[str | None, Header()] = None) -> JSONResponse:
     cursor: MySQLCursorAbstract
     with ConnectionCursor(db_config) as cursor:
-        cursor.execute("SELECT author_user_id, private, IF(NOW() > start_time, 1, 0) AS started, IF(NOW() > end_time, 1, 0) AS ended FROM competitions WHERE id = %(competition_id)s LIMIT 1", {'competition_id': competition_id})
+        cursor.execute("SELECT author_user_id, private, IF(NOW() > start_time, 1, 0) AS started, IF(NOW() > end_time, 1, 0) AS ended, only_count_submissions_with_zero_edition_difference FROM competitions WHERE id = %(competition_id)s LIMIT 1", {'competition_id': competition_id})
         competition: Any = cursor.fetchone()
         if competition is None:
             raise HTTPException(status_code=404, detail="Competition does not exist")
+        team: Any = None
         if not competition['started']:
             token: Token = decode_token(authorization)
             if token.id != competition['author_user_id']:
                 raise HTTPException(status_code=403, detail="You do not have a permission to view problems of this competition")
         else:
-            if not competition['ended'] or competition['private']:
+            if authorization is not None and authorization != '':
                 token: Token = decode_token(authorization)
-                if token.id != competition['author_user_id']:
-                    cursor.execute("""
-                        SELECT 1
-                        FROM team_members
-                        INNER JOIN competition_participants ON team_members.team_id = competition_participants.team_id
-                        WHERE competition_participants.competition_id = %(id)s AND competition_participants.author_confirmed = 1 AND team_members.member_user_id = %(user_id)s AND team_members.confirmed = 1 AND team_members.coach = 0
-                        LIMIT 1
-                    """, {'id': competition_id, 'user_id': token.id})
-                    if cursor.fetchone() is None:
-                        raise HTTPException(status_code=403, detail="You do not have a permission to view problems of this competition")
+                cursor.execute("""
+                    SELECT team_members.team_id AS id
+                    FROM team_members
+                    INNER JOIN competition_participants ON team_members.team_id = competition_participants.team_id
+                    WHERE competition_participants.competition_id = %(id)s AND competition_participants.author_confirmed = 1 AND team_members.member_user_id = %(user_id)s AND team_members.confirmed = 1 AND team_members.coach = 0
+                    LIMIT 1
+                """, {'id': competition_id, 'user_id': token.id})
+                team = cursor.fetchone()
+            if team is None and token.id != competition['author_user_id'] and (not competition['ended'] or competition['private']):
+                raise HTTPException(status_code=403, detail="You do not have a permission to view problems of this competition")
         cursor.execute("""
             SELECT
                 problems.id AS id,
@@ -2706,8 +2734,7 @@ def get_competition_problem(competition_id: int, problem_id: int, authorization:
                 problems.time_restriction AS time_restriction,
                 problems.memory_restriction AS memory_restriction,
                 problems.private AS private,
-                problems.approved AS approved,
-                problems.edition AS edition
+                problems.approved AS approved
             FROM problems
             INNER JOIN users ON problems.author_user_id = users.id
             WHERE problems.id = %(problem_id)s
@@ -2716,15 +2743,28 @@ def get_competition_problem(competition_id: int, problem_id: int, authorization:
         problem: Any = cursor.fetchone()
         if problem is None:
             raise HTTPException(status_code=404, detail="Problem does not exist")
+        cursor.execute("SELECT problem_edition FROM competition_problems WHERE competition_id = %(competition_id)s AND problem_id = %(problem_id)s LIMIT 1", {'competition_id': competition_id, 'problem_id': problem_id})
+        competition_problem: Any = cursor.fetchone()
+        if competition_problem is None:
+            raise HTTPException(status_code=404, detail="Problem is not added to this competition")
+        problem['edition'] = competition_problem['problem_edition']
+        if team is not None:
+            cursor.execute("""
+                    SELECT 1
+                    FROM submissions
+                    INNER JOIN competition_submissions ON submissions.id = competition_submissions.submission_id
+                    INNER JOIN competitions ON competition_submissions.competition_id = competitions.id
+                    WHERE competitions.id = %(competition_id)s AND competition_submissions.team_id = %(team_id)s AND submissions.problem_id = %(problem_id)s AND submissions.time_sent BETWEEN competitions.start_time AND competitions.end_time AND submissions.correct_score = submissions.total_score
+                """ + " AND submissions.problem_edition = %(problem_edition)s" if competition['only_count_submissions_with_zero_edition_difference'] else '', {'competition_id': competition_id, 'team_id': team['id'], 'problem_id': problem['id'], 'problem_edition': competition_problem['problem_edition']})
+            problem['solved'] = cursor.fetchone() is not None
+        else:
+            problem['solved'] = None
         cursor.execute("""
             SELECT id, problem_id, input, solution, score, opened
             FROM test_cases
             WHERE problem_id = %(problem_id)s AND opened = 1
         """, {'problem_id': problem_id})
         problem['test_cases'] = list(cursor.fetchall())
-        cursor.execute("SELECT 1 FROM competition_problems WHERE competition_id = %(competition_id)s AND problem_id = %(problem_id)s LIMIT 1", {'competition_id': competition_id, 'problem_id': problem_id})
-        if cursor.fetchone() is None:
-            raise HTTPException(status_code=404, detail="Problem is not added to this competition")
         return JSONResponse(problem)
 
 @app.get("/competitions/{competition_id}/problems", tags=["Competitions", "CompetitionProblems", "Problems"], description="Get all problems of a competition", responses={
@@ -2736,27 +2776,28 @@ def get_competition_problem(competition_id: int, problem_id: int, authorization:
 def get_competition_problems(competition_id: int, authorization: Annotated[str | None, Header()] = None) -> JSONResponse:
     cursor: MySQLCursorAbstract
     with ConnectionCursor(db_config) as cursor:
-        cursor.execute("SELECT author_user_id, private, IF(NOW() > start_time, 1, 0) AS started, IF(NOW() > end_time, 1, 0) AS ended FROM competitions WHERE id = %(competition_id)s LIMIT 1", {'competition_id': competition_id})
+        cursor.execute("SELECT author_user_id, private, IF(NOW() > start_time, 1, 0) AS started, IF(NOW() > end_time, 1, 0) AS ended, only_count_submissions_with_zero_edition_difference FROM competitions WHERE id = %(competition_id)s LIMIT 1", {'competition_id': competition_id})
         competition: Any = cursor.fetchone()
         if competition is None:
             raise HTTPException(status_code=404, detail="Competition does not exist")
+        team: Any = None
         if not competition['started']:
             token: Token = decode_token(authorization)
             if token.id != competition['author_user_id']:
                 raise HTTPException(status_code=403, detail="You do not have a permission to view problems of this competition")
         else:
-            if not competition['ended'] or competition['private']:
+            if authorization is not None and authorization != '':
                 token: Token = decode_token(authorization)
-                if token.id != competition['author_user_id']:
-                    cursor.execute("""
-                        SELECT 1
-                        FROM team_members
-                        INNER JOIN competition_participants ON team_members.team_id = competition_participants.team_id
-                        WHERE competition_participants.competition_id = %(id)s AND competition_participants.author_confirmed = 1 AND team_members.member_user_id = %(user_id)s AND team_members.confirmed = 1 AND team_members.coach = 0
-                        LIMIT 1
-                    """, {'id': competition_id, 'user_id': token.id})
-                    if cursor.fetchone() is None:
-                        raise HTTPException(status_code=403, detail="You do not have a permission to view problems of this competition")
+                cursor.execute("""
+                    SELECT team_members.team_id AS id
+                    FROM team_members
+                    INNER JOIN competition_participants ON team_members.team_id = competition_participants.team_id
+                    WHERE competition_participants.competition_id = %(id)s AND competition_participants.author_confirmed = 1 AND team_members.member_user_id = %(user_id)s AND team_members.confirmed = 1 AND team_members.coach = 0
+                    LIMIT 1
+                """, {'id': competition_id, 'user_id': token.id})
+                team = cursor.fetchone()
+            if team is None and token.id != competition['author_user_id'] and (not competition['ended'] or competition['private']):
+                raise HTTPException(status_code=403, detail="You do not have a permission to view problems of this competition")
         cursor.execute("""
             SELECT
                 problems.id AS id,
@@ -2769,21 +2810,36 @@ def get_competition_problems(competition_id: int, authorization: Annotated[str |
                 problems.time_restriction AS time_restriction,
                 problems.memory_restriction AS memory_restriction,
                 problems.private AS private,
-                problems.approved AS approved,
-                problems.edition AS edition
+                problems.approved AS approved
             FROM competition_problems
             INNER JOIN problems ON competition_problems.problem_id = problems.id
             INNER JOIN users ON problems.author_user_id = users.id
             WHERE competition_problems.competition_id = %(competition_id)s
         """, {'competition_id': competition_id})
         problems: list[Any] = list(cursor.fetchall())
-        for i in range(0, len(problems)):
+        for problem in problems:
+            cursor.execute("SELECT problem_edition FROM competition_problems WHERE competition_id = %(competition_id)s AND problem_id = %(problem_id)s LIMIT 1", {'competition_id': competition_id, 'problem_id': problem['id']})
+            competition_problem: Any = cursor.fetchone()
+            if competition_problem is None:
+                raise HTTPException(status_code=404, detail="Problem is not added to this competition")
+            problem['edition'] = competition_problem['problem_edition']
+            if team is not None:
+                cursor.execute("""
+                        SELECT 1
+                        FROM submissions
+                        INNER JOIN competition_submissions ON submissions.id = competition_submissions.submission_id
+                        INNER JOIN competitions ON competition_submissions.competition_id = competitions.id
+                        WHERE competitions.id = %(competition_id)s AND competition_submissions.team_id = %(team_id)s AND submissions.problem_id = %(problem_id)s AND submissions.time_sent BETWEEN competitions.start_time AND competitions.end_time AND submissions.correct_score = submissions.total_score
+                    """ + " AND submissions.problem_edition = %(problem_edition)s" if competition['only_count_submissions_with_zero_edition_difference'] else '', {'competition_id': competition_id, 'team_id': team['id'], 'problem_id': problem['id'], 'problem_edition': competition_problem['problem_edition']})
+                problem['solved'] = cursor.fetchone() is not None
+            else:
+                problem['solved'] = None
             cursor.execute("""
                 SELECT id, problem_id, input, solution, score, opened
                 FROM test_cases
                 WHERE problem_id = %(problem_id)s AND opened = 1
-            """, {'problem_id': problems[i]['id']})
-            problems[i]['test_cases'] = list(cursor.fetchall())
+            """, {'problem_id': problem['id']})
+            problem['test_cases'] = list(cursor.fetchall())
         return JSONResponse({
             'problems': problems
         })
@@ -3202,6 +3258,7 @@ def get_competition_scoreboard(competition_id: int, authorization: Annotated[str
             only_none: bool = True
             for problem in problems:
                 score: int | None = None
+                solved: bool = False
                 penalty_minutes: int = 0
                 penalty_score: int = 0
                 attempts: int = 0
@@ -3246,6 +3303,7 @@ def get_competition_scoreboard(competition_id: int, authorization: Annotated[str
                     wrong_attempts: Any = cursor.fetchone()
                     attempts += wrong_attempts['wrong_attempts']
                     if score == total_score_time_sent['total_score']:
+                        solved = True
                         penalty_minutes = (datetime.strptime(total_score_time_sent['time_sent'], "%Y-%m-%d %H:%M:%S") - datetime.strptime(competition['start_time'], "%Y-%m-%d %H:%M:%S")).seconds // 60
                         penalty_score = int(penalty_minutes * competition['time_penalty_coefficient'])
                         penalty_score += wrong_attempts['wrong_attempts'] * competition['wrong_attempt_penalty']
@@ -3254,6 +3312,7 @@ def get_competition_scoreboard(competition_id: int, authorization: Annotated[str
                     'name': problem['name'],
                     'edition': problem['edition'],
                     'best_score': score,
+                    'solved': solved,
                     'penalty_minutes': penalty_minutes,
                     'penalty_score': penalty_score,
                     'attempts': attempts,
