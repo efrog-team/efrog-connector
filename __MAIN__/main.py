@@ -3235,20 +3235,20 @@ def get_competition_scoreboard(competition_id: int, authorization: Annotated[str
                         score = int(value) if value - int(value) < 0.5 else int(value) + 1
                     else:
                         score = score
+                    cursor.execute("""
+                        SELECT
+                            COUNT(1) AS wrong_attempts
+                        FROM submissions
+                        INNER JOIN competition_submissions ON submissions.id = competition_submissions.submission_id
+                        INNER JOIN competitions ON competition_submissions.competition_id = competitions.id
+                        WHERE competitions.id = %(competition_id)s AND competition_submissions.team_id = %(team_id)s AND submissions.problem_id = %(problem_id)s AND submissions.time_sent BETWEEN competitions.start_time AND %(correct_submission_time)s
+                    """ + " AND submissions.problem_edition = %(problem_edition)s" if competition['only_count_submissions_with_zero_edition_difference'] else '', {'competition_id': competition_id, 'team_id': team['id'], 'problem_id': problem['id'], 'problem_edition': problem['edition'], 'correct_submission_time': datetime.strptime(total_score_time_sent['time_sent'], "%Y-%m-%d %H:%M:%S")})
+                    wrong_attempts: Any = cursor.fetchone()
+                    attempts += wrong_attempts['wrong_attempts']
                     if score == total_score_time_sent['total_score']:
                         penalty_minutes = (datetime.strptime(total_score_time_sent['time_sent'], "%Y-%m-%d %H:%M:%S") - datetime.strptime(competition['start_time'], "%Y-%m-%d %H:%M:%S")).seconds // 60
-                        score = int(penalty_minutes * competition['time_penalty_coefficient'])
-                        cursor.execute("""
-                            SELECT
-                                COUNT(1) AS wrong_attempts
-                            FROM submissions
-                            INNER JOIN competition_submissions ON submissions.id = competition_submissions.submission_id
-                            INNER JOIN competitions ON competition_submissions.competition_id = competitions.id
-                            WHERE competitions.id = %(competition_id)s AND competition_submissions.team_id = %(team_id)s AND submissions.problem_id = %(problem_id)s AND submissions.time_sent BETWEEN competitions.start_time AND %(correct_submission_time)s
-                        """ + " AND submissions.problem_edition = %(problem_edition)s" if competition['only_count_submissions_with_zero_edition_difference'] else '', {'competition_id': competition_id, 'team_id': team['id'], 'problem_id': problem['id'], 'problem_edition': problem['edition'], 'correct_submission_time': datetime.strptime(total_score_time_sent['time_sent'], "%Y-%m-%d %H:%M:%S")})
-                        wrong_attempts: Any = cursor.fetchone()
+                        penalty_score = int(penalty_minutes * competition['time_penalty_coefficient'])
                         penalty_score += wrong_attempts['wrong_attempts'] * competition['wrong_attempt_penalty']
-                        attempts += wrong_attempts['wrong_attempts']
                 results[-1]['problems'].append({
                     'id': problem['id'],
                     'name': problem['name'],
