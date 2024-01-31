@@ -2758,7 +2758,7 @@ def get_competition_problem(competition_id: int, problem_id: int, authorization:
                     INNER JOIN competition_submissions ON submissions.id = competition_submissions.submission_id
                     INNER JOIN competitions ON competition_submissions.competition_id = competitions.id
                     WHERE competitions.id = %(competition_id)s AND competition_submissions.team_id = %(team_id)s AND submissions.problem_id = %(problem_id)s AND submissions.time_sent BETWEEN competitions.start_time AND competitions.end_time AND submissions.correct_score = submissions.total_score
-                """ + " AND submissions.problem_edition = %(problem_edition)s" if competition['only_count_submissions_with_zero_edition_difference'] else '' + " LIMIT 1", {'competition_id': competition_id, 'team_id': team['id'], 'problem_id': problem['id'], 'problem_edition': competition_problem['problem_edition']})
+                """ + (" AND submissions.problem_edition = %(problem_edition)s" if competition['only_count_submissions_with_zero_edition_difference'] else '') + " LIMIT 1", {'competition_id': competition_id, 'team_id': team['id'], 'problem_id': problem['id'], 'problem_edition': competition_problem['problem_edition']})
             problem['solved'] = cursor.fetchone() is not None
         else:
             problem['solved'] = None
@@ -2833,7 +2833,7 @@ def get_competition_problems(competition_id: int, authorization: Annotated[str |
                     INNER JOIN competition_submissions ON submissions.id = competition_submissions.submission_id
                     INNER JOIN competitions ON competition_submissions.competition_id = competitions.id
                     WHERE competitions.id = %(competition_id)s AND competition_submissions.team_id = %(team_id)s AND submissions.problem_id = %(problem_id)s AND submissions.time_sent BETWEEN competitions.start_time AND competitions.end_time AND submissions.correct_score = submissions.total_score
-                """ + " AND submissions.problem_edition = %(problem_edition)s" if competition['only_count_submissions_with_zero_edition_difference'] else '' + " LIMIT 1", {'competition_id': competition_id, 'team_id': team['id'], 'problem_id': problem['id'], 'problem_edition': competition_problem['problem_edition']})
+                """ + (" AND submissions.problem_edition = %(problem_edition)s" if competition['only_count_submissions_with_zero_edition_difference'] else '') + " LIMIT 1", {'competition_id': competition_id, 'team_id': team['id'], 'problem_id': problem['id'], 'problem_edition': competition_problem['problem_edition']})
                 problem['solved'] = cursor.fetchone() is not None
             else:
                 problem['solved'] = None
@@ -3273,7 +3273,7 @@ def get_competition_scoreboard(competition_id: int, authorization: Annotated[str
                     INNER JOIN competition_submissions ON submissions.id = competition_submissions.submission_id
                     INNER JOIN competitions ON competition_submissions.competition_id = competitions.id
                     WHERE competitions.id = %(competition_id)s AND competition_submissions.team_id = %(team_id)s AND submissions.problem_id = %(problem_id)s AND submissions.time_sent BETWEEN competitions.start_time AND competitions.end_time
-                """ + " AND submissions.problem_edition = %(problem_edition)s" if competition['only_count_submissions_with_zero_edition_difference'] else '' + " LIMIT 1", {'competition_id': competition_id, 'team_id': team['id'], 'problem_id': problem['id'], 'problem_edition': problem['edition']})
+                """ + (" AND submissions.problem_edition = %(problem_edition)s" if competition['only_count_submissions_with_zero_edition_difference'] else '') + " LIMIT 1", {'competition_id': competition_id, 'team_id': team['id'], 'problem_id': problem['id'], 'problem_edition': problem['edition']})
                 score = cursor.fetchone()['score']
                 if score is not None:
                     attempts += 1
@@ -3285,7 +3285,7 @@ def get_competition_scoreboard(competition_id: int, authorization: Annotated[str
                         INNER JOIN competition_submissions ON submissions.id = competition_submissions.submission_id
                         INNER JOIN competitions ON competition_submissions.competition_id = competitions.id
                         WHERE competitions.id = %(competition_id)s AND competition_submissions.team_id = %(team_id)s AND submissions.problem_id = %(problem_id)s AND submissions.time_sent BETWEEN competitions.start_time AND competitions.end_time AND submissions.correct_score = %(maximum_score)s
-                    """ + " AND submissions.problem_edition = %(problem_edition)s" if competition['only_count_submissions_with_zero_edition_difference'] else '' + " LIMIT 1", {'competition_id': competition_id, 'team_id': team['id'], 'problem_id': problem['id'], 'problem_edition': problem['edition'], 'maximum_score': score})
+                    """ + (" AND submissions.problem_edition = %(problem_edition)s" if competition['only_count_submissions_with_zero_edition_difference'] else '') + " LIMIT 1", {'competition_id': competition_id, 'team_id': team['id'], 'problem_id': problem['id'], 'problem_edition': problem['edition'], 'maximum_score': score})
                     total_score_time_sent: Any = cursor.fetchone()
                     if score == total_score_time_sent['total_score']:
                         solved = True
@@ -3305,7 +3305,7 @@ def get_competition_scoreboard(competition_id: int, authorization: Annotated[str
                         INNER JOIN competition_submissions ON submissions.id = competition_submissions.submission_id
                         INNER JOIN competitions ON competition_submissions.competition_id = competitions.id
                         WHERE competitions.id = %(competition_id)s AND competition_submissions.team_id = %(team_id)s AND submissions.problem_id = %(problem_id)s AND submissions.time_sent >= competitions.start_time AND submissions.time_sent < %(correct_submission_time)s
-                    """ + " AND submissions.problem_edition = %(problem_edition)s" if competition['only_count_submissions_with_zero_edition_difference'] else '' + " LIMIT 1", {'competition_id': competition_id, 'team_id': team['id'], 'problem_id': problem['id'], 'problem_edition': problem['edition'], 'correct_submission_time': datetime.strptime(total_score_time_sent['time_sent'], "%Y-%m-%d %H:%M:%S")})
+                    """ + (" AND submissions.problem_edition = %(problem_edition)s" if competition['only_count_submissions_with_zero_edition_difference'] else '') + " LIMIT 1", {'competition_id': competition_id, 'team_id': team['id'], 'problem_id': problem['id'], 'problem_edition': problem['edition'], 'correct_submission_time': datetime.strptime(total_score_time_sent['time_sent'], "%Y-%m-%d %H:%M:%S")})
                     wrong_attempts: Any = cursor.fetchone()
                     attempts += wrong_attempts['wrong_attempts']
                     if solved:
@@ -3320,7 +3320,7 @@ def get_competition_scoreboard(competition_id: int, authorization: Annotated[str
                     'solved': solved,
                     'penalty_minutes': penalty_minutes,
                     'penalty_score': penalty_score,
-                    'attempts': attempts,
+                    'attempts': attempts
                 })
                 total_score += 0 if score is None else score
                 total_penalty_score += penalty_score
