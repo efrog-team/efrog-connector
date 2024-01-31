@@ -2233,7 +2233,7 @@ def get_users_competitions_authored(authored_or_participated: AuthoredOrParticip
                 competitions.only_count_solved_or_not AS only_count_solved_or_not,
                 competitions.count_scores_as_percentages AS count_scores_as_percentages,
                 competitions.time_penalty_coefficient AS time_penalty_coefficient,
-                competitions.wrong_attempt_penalty AS wrong_attempt_penalty
+                competitions.wrong_attempt_penalty AS wrong_attempt_penalty,
                 teams.name AS username_or_team_name,
                 teams.individual AS individual,
                 competition_participants.author_confirmed AS author_confirmed,
