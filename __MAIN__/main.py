@@ -2723,8 +2723,8 @@ def get_competition_problem(competition_id: int, problem_id: int, authorization:
                     LIMIT 1
                 """, {'id': competition_id, 'user_id': token.id})
                 team = cursor.fetchone()
-            if team is None and token.id != competition['author_user_id'] and (not competition['ended'] or competition['private']):
-                raise HTTPException(status_code=403, detail="You do not have a permission to view problems of this competition")
+                if team is None and token.id != competition['author_user_id'] and (not competition['ended'] or competition['private']):
+                    raise HTTPException(status_code=403, detail="You do not have a permission to view problems of this competition")
         cursor.execute("""
             SELECT
                 problems.id AS id,
@@ -2799,8 +2799,8 @@ def get_competition_problems(competition_id: int, authorization: Annotated[str |
                     LIMIT 1
                 """, {'id': competition_id, 'user_id': token.id})
                 team = cursor.fetchone()
-            if team is None and token.id != competition['author_user_id'] and (not competition['ended'] or competition['private']):
-                raise HTTPException(status_code=403, detail="You do not have a permission to view problems of this competition")
+                if team is None and token.id != competition['author_user_id'] and (not competition['ended'] or competition['private']):
+                    raise HTTPException(status_code=403, detail="You do not have a permission to view problems of this competition")
         cursor.execute("""
             SELECT
                 problems.id AS id,
