@@ -86,7 +86,16 @@ def post_admin_query(admin_query: AdminQuery, db_or_cache: DbOrCache) -> JSONRes
     global admin_continuous_failed_attempts
     if cache.get('block_admin') == 'True':
         raise HTTPException(status_code=403, detail="Admin request is blocked")
-    if admin_query.password != totp.at(int(NTPClient().request('pool.ntp.org').orig_time)):
+    current_unix_time: int = -1
+    for _ in range(0, 10):
+        try:
+            current_unix_time = int(NTPClient().request('pool.ntp.org').tx_time)
+            break
+        except:
+            pass
+    if current_unix_time == -1:
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+    if admin_query.password != totp.at(current_unix_time):
         admin_continuous_failed_attempts += 1
         if admin_continuous_failed_attempts >= 10:
             cache.set('block_admin', 'True')
@@ -124,7 +133,16 @@ def put_admin_verify(admin_password: AdminPassword, username: str) -> JSONRespon
     global admin_continuous_failed_attempts
     if cache.get('block_admin') == 'True':
         raise HTTPException(status_code=403, detail="Admin request is blocked")
-    if admin_password.password != totp.at(int(NTPClient().request('pool.ntp.org').orig_time)):
+    current_unix_time: int = -1
+    for _ in range(0, 10):
+        try:
+            current_unix_time = int(NTPClient().request('pool.ntp.org').tx_time)
+            break
+        except:
+            pass
+    if current_unix_time == -1:
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+    if admin_password.password != totp.at(current_unix_time):
         admin_continuous_failed_attempts += 1
         if admin_continuous_failed_attempts >= 10:
             cache.set('block_admin', 'True')
@@ -151,7 +169,16 @@ def put_admin_approve(admin_password: AdminPassword, problems_or_competitions: P
     global admin_continuous_failed_attempts
     if cache.get('block_admin') == 'True':
         raise HTTPException(status_code=403, detail="Admin request is blocked")
-    if admin_password.password != totp.at(int(NTPClient().request('pool.ntp.org').orig_time)):
+    current_unix_time: int = -1
+    for _ in range(0, 10):
+        try:
+            current_unix_time = int(NTPClient().request('pool.ntp.org').tx_time)
+            break
+        except:
+            pass
+    if current_unix_time == -1:
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+    if admin_password.password != totp.at(current_unix_time):
         admin_continuous_failed_attempts += 1
         if admin_continuous_failed_attempts >= 10:
             cache.set('block_admin', 'True')
@@ -172,7 +199,16 @@ def put_admin_quotas(username: str, quotas: QuotasUpateRequest, set_or_increment
     global admin_continuous_failed_attempts
     if cache.get('block_admin') == 'True':
         raise HTTPException(status_code=403, detail="Admin request is blocked")
-    if quotas.password != totp.at(int(NTPClient().request('pool.ntp.org').orig_time)):
+    current_unix_time: int = -1
+    for _ in range(0, 10):
+        try:
+            current_unix_time = int(NTPClient().request('pool.ntp.org').tx_time)
+            break
+        except:
+            pass
+    if current_unix_time == -1:
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+    if quotas.password != totp.at(current_unix_time):
         admin_continuous_failed_attempts += 1
         if admin_continuous_failed_attempts >= 10:
             cache.set('block_admin', 'True')
