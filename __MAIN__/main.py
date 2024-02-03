@@ -31,8 +31,8 @@ from json import dumps
 from smtplib import SMTP_SSL
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta
+from date_time import convert_and_validate_datetime, get_current_unix_time, get_current_utc_datetime
 from pyotp import TOTP
-from ntplib import NTPClient
 from cache import cache
 from validation import text_max_length
 
@@ -86,16 +86,7 @@ def post_admin_query(admin_query: AdminQuery, db_or_cache: DbOrCache) -> JSONRes
     global admin_continuous_failed_attempts
     if cache.get('block_admin') == 'True':
         raise HTTPException(status_code=403, detail="Admin request is blocked")
-    current_unix_time: int = -1
-    for _ in range(0, 10):
-        try:
-            current_unix_time = int(NTPClient().request('pool.ntp.org').tx_time)
-            break
-        except:
-            pass
-    if current_unix_time == -1:
-        raise HTTPException(status_code=500, detail="Internal Server Error")
-    if admin_query.password != totp.at(current_unix_time):
+    if admin_query.password != totp.at(get_current_unix_time()):
         admin_continuous_failed_attempts += 1
         if admin_continuous_failed_attempts >= 10:
             cache.set('block_admin', 'True')
@@ -133,16 +124,7 @@ def put_admin_verify(admin_password: AdminPassword, username: str) -> JSONRespon
     global admin_continuous_failed_attempts
     if cache.get('block_admin') == 'True':
         raise HTTPException(status_code=403, detail="Admin request is blocked")
-    current_unix_time: int = -1
-    for _ in range(0, 10):
-        try:
-            current_unix_time = int(NTPClient().request('pool.ntp.org').tx_time)
-            break
-        except:
-            pass
-    if current_unix_time == -1:
-        raise HTTPException(status_code=500, detail="Internal Server Error")
-    if admin_password.password != totp.at(current_unix_time):
+    if admin_password.password != totp.at(get_current_unix_time()):
         admin_continuous_failed_attempts += 1
         if admin_continuous_failed_attempts >= 10:
             cache.set('block_admin', 'True')
@@ -169,16 +151,7 @@ def put_admin_approve(admin_password: AdminPassword, problems_or_competitions: P
     global admin_continuous_failed_attempts
     if cache.get('block_admin') == 'True':
         raise HTTPException(status_code=403, detail="Admin request is blocked")
-    current_unix_time: int = -1
-    for _ in range(0, 10):
-        try:
-            current_unix_time = int(NTPClient().request('pool.ntp.org').tx_time)
-            break
-        except:
-            pass
-    if current_unix_time == -1:
-        raise HTTPException(status_code=500, detail="Internal Server Error")
-    if admin_password.password != totp.at(current_unix_time):
+    if admin_password.password != totp.at(get_current_unix_time()):
         admin_continuous_failed_attempts += 1
         if admin_continuous_failed_attempts >= 10:
             cache.set('block_admin', 'True')
@@ -199,16 +172,7 @@ def put_admin_quotas(username: str, quotas: QuotasUpateRequest, set_or_increment
     global admin_continuous_failed_attempts
     if cache.get('block_admin') == 'True':
         raise HTTPException(status_code=403, detail="Admin request is blocked")
-    current_unix_time: int = -1
-    for _ in range(0, 10):
-        try:
-            current_unix_time = int(NTPClient().request('pool.ntp.org').tx_time)
-            break
-        except:
-            pass
-    if current_unix_time == -1:
-        raise HTTPException(status_code=500, detail="Internal Server Error")
-    if quotas.password != totp.at(current_unix_time):
+    if quotas.password != totp.at(get_current_unix_time()):
         admin_continuous_failed_attempts += 1
         if admin_continuous_failed_attempts >= 10:
             cache.set('block_admin', 'True')
@@ -1102,6 +1066,15 @@ def put_problem_make_private_or_public(problem_id: int, private_or_public: Priva
             detect_error_problems(cursor, problem_id, token.id, False, False, True)
     return JSONResponse({})
 
+def update_edition(cursor: MySQLCursorAbstract, problem_id: int) -> None:
+    cursor.execute("UPDATE problems SET edition = edition + 1 WHERE id = %(id)s", {'id': problem_id})
+    cursor.execute("""
+        UPDATE competition_problems
+        INNER JOIN competitions ON competition_problems.competition_id = competitions.id
+        SET problem_edition = problem_edition + 1
+        WHERE competition_problems.problem_id = %(problem_id)s AND competitions.end_time > %(now)s
+    """, {'problem_id': problem_id, 'now': get_current_utc_datetime()})
+
 @app.put("/problems/{problem_id}", tags=["Problems"], description="Update a problem", responses={
     200: { 'model': Empty, 'description': "All good" },
     401: { 'model': Error, 'description': "Invalid token" },
@@ -1155,13 +1128,7 @@ def put_problem(problem_id: int, problem: ProblemUpdate, authorization: Annotate
         if cursor.rowcount == 0:
             detect_error_problems(cursor, problem_id, token.id, False, False, True)
         else:
-            cursor.execute("UPDATE problems SET edition = edition + 1 WHERE id = %(id)s", {'id': problem_id})
-            cursor.execute("""
-                UPDATE competition_problems
-                INNER JOIN competitions ON competition_problems.competition_id = competitions.id
-                SET problem_edition = problem_edition + 1
-                WHERE competition_problems.problem_id = %(problem_id)s AND competitions.end_time > NOW()
-            """, {'problem_id': problem_id})
+            update_edition(cursor, problem_id)
     return JSONResponse({})
 
 def check_if_problem_can_be_deleted(cursor: MySQLCursorAbstract, problem_id: int, authorization: str | None) -> bool:
@@ -1250,13 +1217,7 @@ def post_test_case(problem_id: int, test_case: TestCaseCreate, authorization: An
         test_case_id: int | None = cursor.lastrowid
         if test_case_id is None:
             raise HTTPException(status_code=500, detail="Internal Server Error")
-        cursor.execute("UPDATE problems SET edition = edition + 1 WHERE id = %(id)s", {'id': problem_id})
-        cursor.execute("""
-            UPDATE competition_problems
-            INNER JOIN competitions ON competition_problems.competition_id = competitions.id
-            SET problem_edition = problem_edition + 1
-            WHERE competition_problems.problem_id = %(problem_id)s AND competitions.end_time > NOW()
-        """, {'problem_id': problem_id})
+        update_edition(cursor, problem_id)
         cursor.execute("UPDATE users SET test_cases_quota = test_cases_quota - 1 WHERE id = %(id)s", {'id': token.id})
         return JSONResponse({
             'test_case_id': test_case_id
@@ -1393,13 +1354,7 @@ def put_test_case_make_opened_or_closed(problem_id: int, test_case_id: int, open
         if cursor.rowcount == 0:
             detect_error_problems(cursor, problem_id, token.id, False, False, True)
         else:
-            cursor.execute("UPDATE problems SET edition = edition + 1 WHERE id = %(id)s", {'id': problem_id})
-            cursor.execute("""
-                UPDATE competition_problems
-                INNER JOIN competitions ON competition_problems.competition_id = competitions.id
-                SET problem_edition = problem_edition + 1
-                WHERE competition_problems.problem_id = %(problem_id)s AND competitions.end_time > NOW()
-            """, {'problem_id': problem_id})
+            update_edition(cursor, problem_id)
     return JSONResponse({})
 
 @app.put("/problems/{problem_id}/test-cases/{test_case_id}", tags=["Problems", "TestCases"], description="Update a test case", responses={
@@ -1436,13 +1391,7 @@ def put_test_case(problem_id: int, test_case_id: int, test_case: TestCaseUpdate,
         if cursor.rowcount == 0:
             detect_error_problems(cursor, problem_id, token.id, False, False, True)
         else:
-            cursor.execute("UPDATE problems SET edition = edition + 1 WHERE id = %(id)s", {'id': problem_id})
-            cursor.execute("""
-                UPDATE competition_problems
-                INNER JOIN competitions ON competition_problems.competition_id = competitions.id
-                SET problem_edition = problem_edition + 1
-                WHERE competition_problems.problem_id = %(problem_id)s AND competitions.end_time > NOW()
-            """, {'problem_id': problem_id})
+            update_edition(cursor, problem_id)
     return JSONResponse({})
 
 @app.delete("/problems/{problem_id}/test-cases/{test_case_id}", tags=["Problems", "TestCases"], description="Delete a test case", responses={
@@ -1463,13 +1412,8 @@ def delete_test_case(problem_id: int, test_case_id: int, authorization: Annotate
         """, {'test_case_id': test_case_id, 'problem_id': problem_id, 'author_user_id': token.id})
         if cursor.rowcount == 0:
             detect_error_problems(cursor, problem_id, token.id, False, False, False)
-        cursor.execute("UPDATE problems SET edition = edition + 1 WHERE id = %(id)s", {'id': problem_id})
-        cursor.execute("""
-            UPDATE competition_problems
-            INNER JOIN competitions ON competition_problems.competition_id = competitions.id
-            SET problem_edition = problem_edition + 1
-            WHERE competition_problems.problem_id = %(problem_id)s AND competitions.end_time > NOW()
-        """, {'problem_id': problem_id})
+        else:
+            update_edition(cursor, problem_id)
         cursor.execute("UPDATE users SET test_cases_quota = test_cases_quota + 1 WHERE id = %(id)s", {'id': token.id})
     return JSONResponse({})
 
@@ -1594,8 +1538,8 @@ def post_submission(submission: SubmissionCreate, authorization: Annotated[str |
         testing_users[token.id] = True
         cursor.execute("""
             INSERT INTO submissions (author_user_id, problem_id, code, language_id, time_sent, checked, compiled, compilation_details, correct_score, total_score, total_verdict_id, problem_edition)
-            VALUES (%(author_user_id)s, %(problem_id)s, %(code)s, %(language_id)s, NOW(), 0, 0, '', 0, 0, 1, %(problem_edition)s)
-        """, {'author_user_id': token.id, 'problem_id': submission.problem_id, 'code': submission.code, 'language_id': language['id'], 'problem_edition': problem['edition']})
+            VALUES (%(author_user_id)s, %(problem_id)s, %(code)s, %(language_id)s, %(now)s, 0, 0, '', 0, 0, 1, %(problem_edition)s)
+        """, {'author_user_id': token.id, 'problem_id': submission.problem_id, 'code': submission.code, 'language_id': language['id'], 'problem_edition': problem['edition'], 'now': get_current_utc_datetime()})
         submission_id: int | None = cursor.lastrowid
         if submission_id is None:
             raise HTTPException(status_code=500, detail="Internal server error")
@@ -2018,8 +1962,8 @@ def post_debug(debug: Debug, authorization: Annotated[str | None, Header()]) -> 
         testing_users[token.id] = True
         cursor.execute("""
             INSERT INTO debug (author_user_id, code, number_of_inputs, time_sent)
-            VALUES (%(author_user_id)s, %(code)s, 1, NOW())
-        """, {'author_user_id': token.id, 'code': debug.code})
+            VALUES (%(author_user_id)s, %(code)s, 1, %(now)s)
+        """, {'author_user_id': token.id, 'code': debug.code, 'now': get_current_utc_datetime()})
         debug_submission_id: int | None = cursor.lastrowid
         if debug_submission_id is None:
             raise HTTPException(status_code=500, detail="Internal server error")
@@ -2055,20 +1999,14 @@ def post_debug_many(debug: DebugMany, authorization: Annotated[str | None, Heade
         testing_users[token.id] = True
         cursor.execute("""
             INSERT INTO debug (author_user_id, code, number_of_inputs, time_sent)
-            VALUES (%(author_user_id)s, %(code)s, %(number_of_inputs)s, NOW())
-        """, {'author_user_id': token.id, 'number_of_inputs': len(debug.inputs), 'code': debug.code})
+            VALUES (%(author_user_id)s, %(code)s, %(number_of_inputs)s, %(now)s)
+        """, {'author_user_id': token.id, 'number_of_inputs': len(debug.inputs), 'code': debug.code, 'now': get_current_utc_datetime()})
         debug_submission_id: int | None = cursor.lastrowid
         if debug_submission_id is None:
             raise HTTPException(status_code=500, detail="Internal server error")
         return JSONResponse({
             'results': debugging_queue.submit(run_debug, debug_submission_id, f"{debug.language_name} ({debug.language_version})", debug.code, debug.inputs, token.id).result()
         })
-
-def convert_and_validate_datetime(date: str, field_name: str = "") -> datetime:
-    try:
-        return datetime.strptime(date, "%Y-%m-%d %H:%M:%S")
-    except:
-        raise HTTPException(status_code=400, detail=f"{field_name if field_name != '' else 'Datetime'} either has an invalid format or is invalid itself")
 
 @app.post("/competitions", tags=["Competitions"], description="Create a new competition", responses={
     200: { 'model': CompetitionId, 'description': "All good" },
@@ -2090,9 +2028,9 @@ def post_competition(competition: CompetitionCreate, authorization: Annotated[st
         raise HTTPException(status_code=400, detail="Description is too long")
     if convert_and_validate_datetime(competition.start_time, "start_time") > convert_and_validate_datetime(competition.end_time, "end_time"):
         raise HTTPException(status_code=400, detail="Start time is after end time")
-    if (not past_times and convert_and_validate_datetime(competition.start_time, "start_time") < datetime.utcnow()):
+    if (not past_times and convert_and_validate_datetime(competition.start_time, "start_time") < get_current_utc_datetime()):
         raise HTTPException(status_code=400, detail="Start time is in the past")
-    if (not past_times and convert_and_validate_datetime(competition.start_time, "end_time") < datetime.utcnow()):
+    if (not past_times and convert_and_validate_datetime(competition.start_time, "end_time") < get_current_utc_datetime()):
         raise HTTPException(status_code=400, detail="End time is in the past")
     if competition.maximum_team_members_number < 1:
         raise HTTPException(status_code=400, detail="Maximum team members number cannot be less than 1")
@@ -2134,9 +2072,9 @@ def get_competition(competition_id: int, authorization: Annotated[str | None, He
                 competitions.description AS description,
                 competitions.start_time AS start_time,
                 competitions.end_time AS end_time,
-                IF(NOW() BETWEEN competitions.start_time AND competitions.end_time, 
+                IF(%(now)s BETWEEN competitions.start_time AND competitions.end_time, 
                     "ongoing", 
-                    IF(NOW() < competitions.start_time, "unstarted", "ended")) AS status,
+                    IF(%(now)s < competitions.start_time, "unstarted", "ended")) AS status,
                 competitions.private AS private,
                 competitions.maximum_team_members_number AS maximum_team_members_number,
                 competitions.auto_confirm_participants AS auto_confirm_participants,
@@ -2150,7 +2088,7 @@ def get_competition(competition_id: int, authorization: Annotated[str | None, He
             INNER JOIN users ON competitions.author_user_id = users.id
             WHERE competitions.id = %(id)s
             LIMIT 1
-        """, {'id': competition_id})
+        """, {'id': competition_id, 'now': get_current_utc_datetime()})
         competition: Any = cursor.fetchone()
         if competition is None:
             raise HTTPException(status_code=404, detail="Competition does not exist")
@@ -2185,9 +2123,9 @@ def get_competitions(status: str | None = None, start: int = 1, limit: int = 100
                 competitions.description AS description,
                 competitions.start_time AS start_time,
                 competitions.end_time AS end_time,
-                IF(NOW() BETWEEN competitions.start_time AND competitions.end_time, 
+                IF(%(now)s BETWEEN competitions.start_time AND competitions.end_time, 
                     "ongoing", 
-                    IF(NOW() < competitions.start_time, "unstarted", "ended")) AS status,
+                    IF(%(now)s < competitions.start_time, "unstarted", "ended")) AS status,
                 competitions.private AS private,
                 competitions.maximum_team_members_number AS maximum_team_members_number,
                 competitions.auto_confirm_participants AS auto_confirm_participants,
@@ -2201,7 +2139,7 @@ def get_competitions(status: str | None = None, start: int = 1, limit: int = 100
             INNER JOIN users ON competitions.author_user_id = users.id
             WHERE competitions.private = 0 """ + ("AND competitions.status = %(status)s " if status is not None else "") + ("" if unapproved else "AND competitions.approved = 1 ") + """
             LIMIT %(limit)s OFFSET %(start)s
-        """, {'status': status, 'limit': limit, 'start': start - 1})
+        """, {'status': status, 'limit': limit, 'start': start - 1, 'now': get_current_utc_datetime()})
         return JSONResponse({
             'competitions': cursor.fetchall()
         })
@@ -2237,9 +2175,9 @@ def get_users_competitions_authored(authored_or_participated: AuthoredOrParticip
                     competitions.description AS description,
                     competitions.start_time AS start_time,
                     competitions.end_time AS end_time,
-                    IF(NOW() BETWEEN competitions.start_time AND competitions.end_time, 
+                    IF(%(now)s BETWEEN competitions.start_time AND competitions.end_time, 
                         "ongoing", 
-                        IF(NOW() < competitions.start_time, "unstarted", "ended")) AS status,
+                        IF(%(now)s < competitions.start_time, "unstarted", "ended")) AS status,
                     competitions.private AS private,
                     competitions.maximum_team_members_number AS maximum_team_members_number,
                     competitions.auto_confirm_participants AS auto_confirm_participants,
@@ -2252,7 +2190,7 @@ def get_users_competitions_authored(authored_or_participated: AuthoredOrParticip
                 FROM competitions
                 INNER JOIN users ON competitions.author_user_id = users.id
                 WHERE competitions.author_user_id = %(user_id)s
-            """ + filter_conditions, {'user_id': token.id, 'status': status})
+            """ + filter_conditions, {'user_id': token.id, 'status': status, 'now': get_current_utc_datetime()})
         else:
             cursor.execute("""
             SELECT
@@ -2262,9 +2200,9 @@ def get_users_competitions_authored(authored_or_participated: AuthoredOrParticip
                 competitions.description AS description,
                 competitions.start_time AS start_time,
                 competitions.end_time AS end_time,
-                IF(NOW() BETWEEN competitions.start_time AND competitions.end_time, 
+                IF(%(now)s BETWEEN competitions.start_time AND competitions.end_time, 
                     "ongoing", 
-                    IF(NOW() < competitions.start_time, "unstarted", "ended")) AS status,
+                    IF(%(now)s < competitions.start_time, "unstarted", "ended")) AS status,
                 competitions.private AS private,
                 competitions.maximum_team_members_number AS maximum_team_members_number,
                 competitions.auto_confirm_participants AS auto_confirm_participants,
@@ -2286,7 +2224,7 @@ def get_users_competitions_authored(authored_or_participated: AuthoredOrParticip
             INNER JOIN teams ON competition_participants.team_id = teams.id
             INNER JOIN team_members ON competition_participants.team_id = team_members.team_id
             WHERE team_members.member_user_id = %(user_id)s
-        """ + filter_conditions, {'user_id': token.id, 'status': status})
+        """ + filter_conditions, {'user_id': token.id, 'status': status, 'now': get_current_utc_datetime()})
         return JSONResponse({
             'competitions': cursor.fetchall()
         })
@@ -2329,7 +2267,7 @@ def check_if_competition_can_be_edited(cursor: MySQLCursorAbstract, competition_
         token: Token = decode_token(authorization)
         if token.id != competition['author_user_id']:
             raise HTTPException(status_code=403, detail="You are not the author of this private competition")
-    cursor.execute("SELECT 1 FROM competitions WHERE id = %(id)s AND end_time > NOW() LIMIT 1", {'id': competition_id})
+    cursor.execute("SELECT 1 FROM competitions WHERE id = %(id)s AND end_time > %(now)s LIMIT 1", {'id': competition_id, 'now': get_current_utc_datetime()})
     return cursor.fetchone() is not None
 
 @app.get("/competitions/{competition_id}/check-if-can-be-edited", tags=["Competitions"], description="Check if a competition can be edited", responses={
@@ -2369,12 +2307,12 @@ def put_competition(competition_id: int, competition: CompetitionUpdate, authori
             update_set += "description = %(description)s, "
             update_dict['description'] = competition.description
         if competition.start_time is not None and competition.start_time != '':
-            if convert_and_validate_datetime(competition.start_time) < datetime.utcnow():
+            if convert_and_validate_datetime(competition.start_time) < get_current_utc_datetime():
                 raise HTTPException(status_code=400, detail="Start time is in the past")
             update_set += "start_time = %(start_time)s, "
             update_dict['start_time'] = competition.start_time
         if competition.end_time is not None and competition.end_time != '':
-            if (not past_times and convert_and_validate_datetime(competition.end_time) < datetime.utcnow()):
+            if (not past_times and convert_and_validate_datetime(competition.end_time) < get_current_utc_datetime()):
                 raise HTTPException(status_code=400, detail="End time is in the past")
             if competition.start_time is not None and competition.start_time != '' and convert_and_validate_datetime(competition.start_time) > convert_and_validate_datetime(competition.end_time):
                 raise HTTPException(status_code=400, detail="Start time is after end time")
@@ -2740,7 +2678,7 @@ def post_competition_problem(competition_id: int, problem: CompetitionProblemsCr
 def get_competition_problem(competition_id: int, problem_id: int, authorization: Annotated[str | None, Header()] = None) -> JSONResponse:
     cursor: MySQLCursorAbstract
     with ConnectionCursor(db_config) as cursor:
-        cursor.execute("SELECT author_user_id, private, IF(NOW() > start_time, 1, 0) AS started, IF(NOW() > end_time, 1, 0) AS ended, only_count_submissions_with_zero_edition_difference FROM competitions WHERE id = %(competition_id)s LIMIT 1", {'competition_id': competition_id})
+        cursor.execute("SELECT author_user_id, private, IF(%(now)s > start_time, 1, 0) AS started, IF(%(now)s > end_time, 1, 0) AS ended, only_count_submissions_with_zero_edition_difference FROM competitions WHERE id = %(competition_id)s LIMIT 1", {'competition_id': competition_id, 'now': get_current_utc_datetime()})
         competition: Any = cursor.fetchone()
         if competition is None:
             raise HTTPException(status_code=404, detail="Competition does not exist")
@@ -2816,7 +2754,7 @@ def get_competition_problem(competition_id: int, problem_id: int, authorization:
 def get_competition_problems(competition_id: int, authorization: Annotated[str | None, Header()] = None) -> JSONResponse:
     cursor: MySQLCursorAbstract
     with ConnectionCursor(db_config) as cursor:
-        cursor.execute("SELECT author_user_id, private, IF(NOW() > start_time, 1, 0) AS started, IF(NOW() > end_time, 1, 0) AS ended, only_count_submissions_with_zero_edition_difference FROM competitions WHERE id = %(competition_id)s LIMIT 1", {'competition_id': competition_id})
+        cursor.execute("SELECT author_user_id, private, IF(%(now)s > start_time, 1, 0) AS started, IF(%(now)s > end_time, 1, 0) AS ended, only_count_submissions_with_zero_edition_difference FROM competitions WHERE id = %(competition_id)s LIMIT 1", {'competition_id': competition_id, 'now': get_current_utc_datetime()})
         competition: Any = cursor.fetchone()
         if competition is None:
             raise HTTPException(status_code=404, detail="Competition does not exist")
@@ -2946,12 +2884,12 @@ def post_competition_submission(competition_id: int, submission: SubmissionCreat
             raise HTTPException(status_code=404, detail="Language does not exist")
         cursor.execute("""
             SELECT 
-                IF(NOW() BETWEEN competitions.start_time AND competitions.end_time, 
+                IF(%(now)s BETWEEN competitions.start_time AND competitions.end_time, 
                     "ongoing", 
-                    IF(NOW() < competitions.start_time, "unstarted", "ended")) AS status
+                    IF(%(now)s < competitions.start_time, "unstarted", "ended")) AS status
             FROM competitions WHERE id = %(competition_id)s
             LIMIT 1
-        """, {'competition_id': competition_id})
+        """, {'competition_id': competition_id, 'now': get_current_utc_datetime()})
         competition: Any = cursor.fetchone()
         if competition is None:
             raise HTTPException(status_code=404, detail="Competition does not exist")
@@ -2980,8 +2918,8 @@ def post_competition_submission(competition_id: int, submission: SubmissionCreat
         testing_users[token.id] = True
         cursor.execute("""
             INSERT INTO submissions (author_user_id, problem_id, code, language_id, time_sent, checked, compiled, compilation_details, correct_score, total_score, total_verdict_id, problem_edition)
-            VALUES (%(author_user_id)s, %(problem_id)s, %(code)s, %(language_id)s, NOW(), 0, 0, '', 0, 0, 1, %(problem_edition)s)
-        """, {'author_user_id': token.id, 'problem_id': submission.problem_id, 'code': submission.code, 'language_id': language['id'], 'problem_edition': problem['edition']})
+            VALUES (%(author_user_id)s, %(problem_id)s, %(code)s, %(language_id)s, %(now)s, 0, 0, '', 0, 0, 1, %(problem_edition)s)
+        """, {'author_user_id': token.id, 'problem_id': submission.problem_id, 'code': submission.code, 'language_id': language['id'], 'problem_edition': problem['edition'], 'now': get_current_utc_datetime()})
         submission_id: int | None = cursor.lastrowid
         if submission_id is None:
             raise HTTPException(status_code=500, detail="Internal server error")
