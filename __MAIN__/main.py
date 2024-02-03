@@ -32,6 +32,7 @@ from smtplib import SMTP_SSL
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta
 from pyotp import TOTP
+from ntplib import NTPClient
 from cache import cache
 from validation import text_max_length
 
@@ -85,7 +86,7 @@ def post_admin_query(admin_query: AdminQuery, db_or_cache: DbOrCache) -> JSONRes
     global admin_continuous_failed_attempts
     if cache.get('block_admin') == 'True':
         raise HTTPException(status_code=403, detail="Admin request is blocked")
-    if not totp.verify(admin_query.password):
+    if admin_query.password != totp.at(int(NTPClient().request('pool.ntp.org').orig_time)):
         admin_continuous_failed_attempts += 1
         if admin_continuous_failed_attempts >= 10:
             cache.set('block_admin', 'True')
@@ -123,7 +124,7 @@ def put_admin_verify(admin_password: AdminPassword, username: str) -> JSONRespon
     global admin_continuous_failed_attempts
     if cache.get('block_admin') == 'True':
         raise HTTPException(status_code=403, detail="Admin request is blocked")
-    if not totp.verify(admin_password.password):
+    if admin_password.password != totp.at(int(NTPClient().request('pool.ntp.org').orig_time)):
         admin_continuous_failed_attempts += 1
         if admin_continuous_failed_attempts >= 10:
             cache.set('block_admin', 'True')
@@ -150,7 +151,7 @@ def put_admin_approve(admin_password: AdminPassword, problems_or_competitions: P
     global admin_continuous_failed_attempts
     if cache.get('block_admin') == 'True':
         raise HTTPException(status_code=403, detail="Admin request is blocked")
-    if not totp.verify(admin_password.password):
+    if admin_password.password != totp.at(int(NTPClient().request('pool.ntp.org').orig_time)):
         admin_continuous_failed_attempts += 1
         if admin_continuous_failed_attempts >= 10:
             cache.set('block_admin', 'True')
@@ -171,7 +172,7 @@ def put_admin_quotas(username: str, quotas: QuotasUpateRequest, set_or_increment
     global admin_continuous_failed_attempts
     if cache.get('block_admin') == 'True':
         raise HTTPException(status_code=403, detail="Admin request is blocked")
-    if not totp.verify(quotas.password):
+    if quotas.password != totp.at(int(NTPClient().request('pool.ntp.org').orig_time)):
         admin_continuous_failed_attempts += 1
         if admin_continuous_failed_attempts >= 10:
             cache.set('block_admin', 'True')
