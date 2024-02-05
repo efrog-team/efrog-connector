@@ -135,7 +135,27 @@ class TestCaseFull(TestCaseBase):
 class TestCasesFull(BaseModel):
     test_cases: list[TestCaseFull]
 
+class CustomCheckerBase(BaseModel):
+    code: str
+    language_name: str
+    language_version: str
+
+class CustomCheckerId(BaseModel):
+    test_case_id: int
+
+@all_optional()
+class CustomCheckerUpdate(CustomCheckerBase):
+    pass
+
+class CustomCheckerFull(CustomCheckerBase):
+    id: int
+    problem_id: int
+
 class ProblemWithTestCases(ProblemFull):
+    test_cases: list[TestCaseFull]
+
+class ProblemFullResponse(ProblemFull):
+    custom_checker: CustomCheckerFull | None = None
     test_cases: list[TestCaseFull]
 
 class VerdictSubmission(Enum):

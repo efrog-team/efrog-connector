@@ -11,14 +11,12 @@ class TestResultCTypes(Structure):
     _fields_ = [('status', c_int),
                 ('time', c_int),
                 ('cpu_time', c_int),
-                ('virtual_memory', c_int),
                 ('physical_memory', c_int)]
 
 class DebugResultCTypes(Structure):
     _fields_ = [('status', c_int),
                 ('time', c_int),
                 ('cpu_time', c_int),
-                ('virtual_memory', c_int),
                 ('physical_memory', c_int),
                 ('output', c_char_p)]
 
@@ -28,19 +26,17 @@ class CreateFilesResultLib:
         self.description = description
 
 class TestResultLib:
-    def __init__(self, status: int, time: int, cpu_time: int, virtual_memory: int, physical_memory: int) -> None:
+    def __init__(self, status: int, time: int, cpu_time: int, physical_memory: int) -> None:
         self.status = status
         self.time = time
         self.cpu_time = cpu_time
-        self.virtual_memory = virtual_memory
         self.physical_memory = physical_memory
 
 class DebugResultLib:
-    def __init__(self, status: int, time: int, cpu_time: int, virtual_memory: int, physical_memory: int, output: str) -> None:
+    def __init__(self, status: int, time: int, cpu_time: int, physical_memory: int, output: str) -> None:
         self.status = status
         self.time = time
         self.cpu_time = cpu_time
-        self.virtual_memory = virtual_memory
         self.physical_memory = physical_memory
         self.output = output
 
@@ -68,17 +64,17 @@ class Library:
         self.compile()
         self.lib: CDLL = self.get_raw()
 
-    def create_files(self, submission_id: int, code: str, language: str, submission: int) -> CreateFilesResultLib:
-        result: Any = self.lib.create_files(submission_id, code.encode('utf-8'), language.encode('utf-8'), submission).contents
+    def create_files(self, submission_id: int, code: str, language: str, submission: int, custom_check: int, custom_check_language: str, custom_check_code: str) -> CreateFilesResultLib:
+        result: Any = self.lib.create_files(submission_id, code.encode('utf-8'), language.encode('utf-8'), submission, custom_check, custom_check_language.encode('utf-8'), custom_check_code.encode('utf-8')).contents
         return CreateFilesResultLib(result.status, result.description.decode('utf-8'))
 
-    def check_test_case(self, submission_id: int, test_case_id: int, language: str, input: str, solution: str, time_limit: int, memory_limit: int) -> TestResultLib:
-        result: Any = self.lib.check_test_case(submission_id, test_case_id, language.encode('utf-8'), input.encode('utf-8'), solution.encode('utf-8'), time_limit, memory_limit, 1).contents
-        return TestResultLib(result.status, result.time, result.cpu_time, result.virtual_memory, result.physical_memory)
+    def check_test_case(self, submission_id: int, test_case_id: int, language: str, input: str, solution: str, time_limit: int, memory_limit: int, custom_check: int, custom_check_language: str) -> TestResultLib:
+        result: Any = self.lib.check_test_case(submission_id, test_case_id, language.encode('utf-8'), input.encode('utf-8'), solution.encode('utf-8'), time_limit, memory_limit, 1, custom_check, custom_check_language.encode('utf-8')).contents
+        return TestResultLib(result.status, result.time, result.cpu_time, result.physical_memory)
 
     def debug(self, debug_submission_id: int, debug_test_id: int, language: str, input: str) -> DebugResultLib:
         result: Any = self.lib.debug(debug_submission_id, debug_test_id, language.encode('utf-8'), input.encode('utf-8'), 0).contents
-        return DebugResultLib(result.status, result.time, result.cpu_time, result.virtual_memory, result.physical_memory, result.output.decode('utf-8'))
+        return DebugResultLib(result.status, result.time, result.cpu_time, result.physical_memory, result.output.decode('utf-8'))
 
     def delete_files(self, submission_id: int, submission: int) -> int:
         return self.lib.delete_files(submission_id, submission)

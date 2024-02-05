@@ -122,6 +122,16 @@ CREATE TABLE languages (
     PRIMARY KEY (id)
 );
 
+CREATE TABLE custom_checkers (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    problem_id BIGINT UNSIGNED NOT NULL,
+    code TEXT NOT NULL,
+    language_id BIGINT UNSIGNED NOT NULL,
+    PRIMARY KEY (id),
+    FOREIGN KEY (problem_id) REFERENCES problems(id),
+    UNIQUE KEY (problem_id)
+);
+
 CREATE TABLE verdicts (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     text TEXT NOT NULL,
@@ -167,7 +177,6 @@ CREATE TABLE submission_results (
     verdict_id BIGINT UNSIGNED NOT NULL,
     time_taken INT UNSIGNED NOT NULL,
     cpu_time_taken INT UNSIGNED NOT NULL,
-    virtual_memory_taken INT UNSIGNED NOT NULL,
     physical_memory_taken INT UNSIGNED NOT NULL,
     PRIMARY KEY (id),
     FOREIGN KEY (submission_id) REFERENCES submissions(id),
@@ -198,6 +207,7 @@ INSERT INTO verdicts (text) VALUES ('Time Limit Exceeded');
 INSERT INTO verdicts (text) VALUES ('Memory Limit Exceeded');
 INSERT INTO verdicts (text) VALUES ('Runtime Error');
 INSERT INTO verdicts (text) VALUES ('Compilation Error');
+INSERT INTO verdicts (text) VALUES ('Custom Checker Error');
 INSERT INTO verdicts (text) VALUES ('Internal Server Error');
 
 INSERT INTO users (username, email, name, password, verified, problems_quota, test_cases_quota, competitions_quota) VALUES ('admin', 'admin@admin', 'admin', '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918', 1, 19, 94, 5);

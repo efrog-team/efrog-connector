@@ -5,8 +5,9 @@ from models import Empty, Error, Can
 from models import AdminQuery, AdminPassword, Question, QuotasUpateRequest
 from models import UserCreate, UserToken, TokenResponse, UserUpdate, UserVerifyEmail, UserResetPassword, UserFull
 from models import Team, Teams, TeamMember, TeamMembers
-from models import ProblemCreate, ProblemId, ProblemUpdate, ProblemFull, ProblemsFull, ProblemWithTestCases
+from models import ProblemCreate, ProblemId, ProblemUpdate, ProblemFull, ProblemsFull, ProblemWithTestCases, ProblemFullResponse
 from models import TestCaseCreate, TestCaseId, TestCaseUpdate, TestCaseFull, TestCasesFull
+from models import CustomCheckerBase, CustomCheckerId, CustomCheckerUpdate, CustomCheckerFull
 from models import SubmissionCreate, SubmissionId, SubmissionPublic, SubmissionsPublic, SubmissionFull, SubmissionUnchecked
 from models import WebcoketSubmissionsResult, WebcoketSubmissionsTotals, WebcoketSubmissionsMessage
 from models import Debug, DebugMany, DebugResult, DebugResults
@@ -1078,7 +1079,7 @@ def update_edition(cursor: MySQLCursorAbstract, problem_id: int) -> None:
 @app.put("/problems/{problem_id}", tags=["Problems"], description="Update a problem", responses={
     200: { 'model': Empty, 'description': "All good" },
     401: { 'model': Error, 'description': "Invalid token" },
-    403: { 'model': Error, 'description': "You are not the author of the problem or it cannot be edited or deleted" },
+    403: { 'model': Error, 'description': "You are not the author of the problem" },
     404: { 'model': Error, 'description': "Problem does not exist" }
 })
 def put_problem(problem_id: int, problem: ProblemUpdate, authorization: Annotated[str | None, Header()]) -> JSONResponse:
@@ -1164,7 +1165,7 @@ def get_check_if_problem_can_be_deleted(problem_id: int, authorization: Annotate
 @app.delete("/problems/{problem_id}", tags=["Problems"], description="Delete a problem", responses={
     200: { 'model': Empty, 'description': "All good" },
     401: { 'model': Error, 'description': "Invalid token" },
-    403: { 'model': Error, 'description': "You are not the author of the problem or it cannot be edited or deleted" },
+    403: { 'model': Error, 'description': "You are not the author of the problem or it connot be deleted" },
     404: { 'model': Error, 'description': "Problem does not exist" }
 })
 def delete_problem(problem_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
@@ -1194,7 +1195,8 @@ def delete_problem(problem_id: int, authorization: Annotated[str | None, Header(
     200: { 'model': TestCaseId, 'description': "All good" },
     400: { 'model': Error, 'description': "Invalid data" },
     401: { 'model': Error, 'description': "Invalid token" },
-    403: { 'model': Error, 'description': "This problem cannot be edited or deleted or you have used all your test cases creation quota" }
+    403: { 'model': Error, 'description': "You have used all your test cases creation quota or you are not the author of the problem" },
+    404: { 'model': Error, 'description': "Problem does not exist" }
 })
 def post_test_case(problem_id: int, test_case: TestCaseCreate, authorization: Annotated[str | None, Header()]) -> JSONResponse:
     if test_case.score < 0:
@@ -1338,7 +1340,7 @@ def get_problem_full(problem_id: int, authorization: Annotated[str | None, Heade
 @app.put("/problems/{problem_id}/test-cases/{test_case_id}/make-{opened_or_closed}", tags=["Problems", "TestCases"], description="Make a test case opened or closed", responses={
     200: { 'model': Empty, 'description': "All good" },
     401: { 'model': Error, 'description': "Invalid token" },
-    403: { 'model': Error, 'description': "You are not the author of the problem or it cannot be edited or deleted" },
+    403: { 'model': Error, 'description': "You are not the author of the problem" },
     404: { 'model': Error, 'description': "Problem or test case does not exist" }
 })
 def put_test_case_make_opened_or_closed(problem_id: int, test_case_id: int, opened_or_closed: OpenedOrClosed, authorization: Annotated[str | None, Header()]) -> JSONResponse:
@@ -1360,7 +1362,7 @@ def put_test_case_make_opened_or_closed(problem_id: int, test_case_id: int, open
 @app.put("/problems/{problem_id}/test-cases/{test_case_id}", tags=["Problems", "TestCases"], description="Update a test case", responses={
     200: { 'model': Empty, 'description': "All good" },
     401: { 'model': Error, 'description': "Invalid token" },
-    403: { 'model': Error, 'description': "You are not the author of the problem or it cannot be edited or deleted" },
+    403: { 'model': Error, 'description': "You are not the author of the problem" },
     404: { 'model': Error, 'description': "Problem or test case does not exist" }
 })
 def put_test_case(problem_id: int, test_case_id: int, test_case: TestCaseUpdate, authorization: Annotated[str | None, Header()]) -> JSONResponse:
@@ -1370,15 +1372,15 @@ def put_test_case(problem_id: int, test_case_id: int, test_case: TestCaseUpdate,
     if test_case.input is not None and test_case.input != '':
         if len(test_case.input) > text_max_length['mediumtext']:
             raise HTTPException(status_code=400, detail="Input is too long")
-        update_set += "input = %(input)s, "
+        update_set += "test_cases.input = %(input)s, "
         update_dict['input'] = test_case.input
     if test_case.solution is not None and test_case.solution != '':
         if len(test_case.solution) > text_max_length['mediumtext']:
             raise HTTPException(status_code=400, detail="Solution is too long")
-        update_set += "solution = %(solution)s, "
+        update_set += "test_cases.solution = %(solution)s, "
         update_dict['solution'] = test_case.solution
     if test_case.score is not None and test_case.score >= 0:
-        update_set += "score = %(score)s, "
+        update_set += "test_cases.score = %(score)s, "
         update_dict['score'] = test_case.score
     cursor: MySQLCursorAbstract
     with ConnectionCursor(db_config) as cursor:
@@ -1397,7 +1399,7 @@ def put_test_case(problem_id: int, test_case_id: int, test_case: TestCaseUpdate,
 @app.delete("/problems/{problem_id}/test-cases/{test_case_id}", tags=["Problems", "TestCases"], description="Delete a test case", responses={
     200: { 'model': Empty, 'description': "All good" },
     401: { 'model': Error, 'description': "Invalid token" },
-    403: { 'model': Error, 'description': "You are not the author of the problem or it cannot be edited or deleted" },
+    403: { 'model': Error, 'description': "You are not the author of the problem" },
     404: { 'model': Error, 'description': "Problem or test case does not exist" }
 })
 def delete_test_case(problem_id: int, test_case_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
@@ -1417,11 +1419,211 @@ def delete_test_case(problem_id: int, test_case_id: int, authorization: Annotate
         cursor.execute("UPDATE users SET test_cases_quota = test_cases_quota + 1 WHERE id = %(id)s", {'id': token.id})
     return JSONResponse({})
 
+@app.post("/problems/{problem_id}/custom-checker", tags=["Problems", "CustomCheckers"], description="Create a custom checker", responses={
+    200: { 'model': CustomCheckerId, 'description': "All good" },
+    400: { 'model': Error, 'description': "Invalid data" },
+    401: { 'model': Error, 'description': "Invalid token" },
+    403: { 'model': Error, 'description': "You are not the author of the problem" },
+    404: { 'model': Error, 'description': "Problem does not exist" },
+    409: { 'model': Error, 'description': "Custom checker for the problem already exists" }
+})
+def post_custom_checker(problem_id: int, custom_checker: CustomCheckerBase, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+    if custom_checker.code == "":
+        raise HTTPException(status_code=400, detail="Code cannot be empty")
+    if len(custom_checker.code) > text_max_length['text']:
+        raise HTTPException(status_code=400, detail="Code is too long")
+    if custom_checker.language_name == "":
+        raise HTTPException(status_code=400, detail="Language name cannot be empty")
+    if custom_checker.language_version == "":
+        raise HTTPException(status_code=400, detail="Language version cannot be empty")
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(db_config) as cursor:
+        detect_error_problems(cursor, problem_id, token.id, False, False, True)
+        cursor.execute("SELECT id FROM languages WHERE name = %(name)s AND version = %(version)s AND supported = 1 LIMIT 1", {'name': custom_checker.language_name, 'version': custom_checker.language_version})
+        language: Any = cursor.fetchone()
+        if language is None:
+            raise HTTPException(status_code=404, detail="Language does not exist")
+        if testing_users.get(token.id) is not None:
+            raise HTTPException(status_code=403, detail="You already have a testing submission or debug")
+        try:
+            cursor.execute("""
+                INSERT INTO custom_checkers (problem_id, code, language_id)
+                VALUES (%(problem_id)s, %(code)s, %(language_id)s)
+            """, {'problem_id': problem_id, 'code': custom_checker.code, 'language_id': language['id']})
+        except IntegrityError:
+            raise HTTPException(status_code=409, detail="Custom checker for the problem already exists")
+        custom_checker_id: int | None = cursor.lastrowid
+        if custom_checker_id is None:
+            raise HTTPException(status_code=500, detail="Internal Server Error")
+        update_edition(cursor, problem_id)
+        return JSONResponse({
+            'custom_checker_id': custom_checker_id
+        })
+
+@app.get("/problems/{problem_id}/custom-checker", tags=["Problems", "CustomCheckers"], description="Get a test case", responses={
+    200: { 'model': CustomCheckerFull, 'description': "All good" },
+    401: { 'model': Error, 'description': "Invalid token (required for closed cases or private problems)" },
+    403: { 'model': Error, 'description': "You are not the author of the problem" },
+    404: { 'model': Error, 'description': "Test case does not exist or problem does not exist" }
+})
+def get_custom_checker(problem_id: int, authorization: Annotated[str | None, Header()] = None) -> JSONResponse:
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(db_config) as cursor:
+        detect_error_problems(cursor, problem_id, token.id, False, False, True)
+        cursor.execute("""
+            SELECT 
+                custom_checkers.id AS id,
+                custom_checkers.problem_id AS problem_id,
+                custom_checkers.code AS code,
+                languages.name AS language_name,
+                languages.version AS language_version
+            FROM custom_checkers
+            INNER JOIN languages ON custom_checkers.language_id = languages.id
+            WHERE custom_checkers.problem_id = %(problem_id)s
+            LIMIT 1
+        """, {'problem_id': problem_id})
+        custom_checker: Any = cursor.fetchone()
+        if custom_checker is None:
+            raise HTTPException(status_code=404, detail="Custom checker for the problem does not exist")
+        return JSONResponse(custom_checker)
+
+@app.put("/problems/{problem_id}/custom-checker", tags=["Problems", "CustomCheckers"], description="Update a custom checker", responses={
+    200: { 'model': Empty, 'description': "All good" },
+    401: { 'model': Error, 'description': "Invalid token" },
+    403: { 'model': Error, 'description': "You are not the author of the problem" },
+    404: { 'model': Error, 'description': "Problem or custom checker or language does not exist" }
+})
+def put_custom_checker(problem_id: int, custom_checker: CustomCheckerUpdate, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+    token: Token = decode_token(authorization)
+    update_set: str = ""
+    update_dict: dict[str, Any] = {'problem_id': problem_id, 'author_user_id': token.id}
+    if custom_checker.code is not None and custom_checker.code != '':
+        if len(custom_checker.code) > text_max_length['text']:
+            raise HTTPException(status_code=400, detail="Code is too long")
+        update_set += "custom_checkers.code = %(code)s, "
+        update_dict['code'] = custom_checker.code
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(db_config) as cursor:
+        if custom_checker.language_name != '' and custom_checker.language_version != '':
+            cursor.execute("SELECT id FROM languages WHERE name = %(name)s AND version = %(version)s AND supported = 1 LIMIT 1", {'name': custom_checker.language_name, 'version': custom_checker.language_version})
+            language: Any = cursor.fetchone()
+            if language is None:
+                raise HTTPException(status_code=404, detail="Language does not exist")
+            update_set += "custom_checkers.language_id = %(language_id)s, "
+            update_dict['language_id'] = language['id']
+        cursor.execute(f"""
+            UPDATE custom_checkers
+            INNER JOIN problems ON custom_checkers.problem_id = problems.id
+            SET """ + update_set[:-2] + ' ' + """
+            WHERE custom_checkers.problem_id = %(problem_id)s AND problems.author_user_id = %(author_user_id)s
+        """, update_dict)
+        if cursor.rowcount == 0:
+            detect_error_problems(cursor, problem_id, token.id, False, False, True)
+        else:
+            update_edition(cursor, problem_id)
+    return JSONResponse({})
+
+@app.delete("/problems/{problem_id}/custom-checker", tags=["Problems", "CustomCheckers"], description="Delete a custom checker", responses={
+    200: { 'model': Empty, 'description': "All good" },
+    401: { 'model': Error, 'description': "Invalid token" },
+    403: { 'model': Error, 'description': "You are not the author of the problem" },
+    404: { 'model': Error, 'description': "Problem or custom checker does not exist" }
+})
+def delete_custom_checker(problem_id: int, authorization: Annotated[str | None, Header()]) -> JSONResponse:
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(db_config) as cursor:
+        cursor.execute("""
+            DELETE custom_checkers
+            FROM custom_checkers
+            INNER JOIN problems ON custom_checkers.problem_id = problems.id
+            WHERE custom_checkers.problem_id = %(problem_id)s AND problems.author_user_id = %(author_user_id)s
+        """, {'problem_id': problem_id, 'author_user_id': token.id})
+        if cursor.rowcount == 0:
+            detect_error_problems(cursor, problem_id, token.id, False, False, False)
+        else:
+            update_edition(cursor, problem_id)
+    return JSONResponse({})
+
+@app.get("/problems/{problem_id}/full", tags=["Problems", "CustomCheckers", "TestCases"], description="Get a full problem", responses={
+    200: { 'model': ProblemFullResponse, 'description': "All good" },
+    401: { 'model': Error, 'description': "Invalid token (required for not only opened cases or private problems)" },
+    403: { 'model': Error, 'description': "You are not the author of the problem" },
+    404: { 'model': Error, 'description': "Problem does not exist" }
+})
+def get_problem_full(problem_id: int, authorization: Annotated[str | None, Header()] = None) -> JSONResponse:
+    token: Token = decode_token(authorization)
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(db_config) as cursor:
+        detect_error_problems(cursor, problem_id, token.id, False, False, True)
+        cursor.execute("""
+            SELECT
+                problems.id AS id,
+                users.username AS author_user_username,
+                problems.name AS name,
+                problems.statement AS statement,
+                problems.input_statement AS input_statement,
+                problems.output_statement AS output_statement,
+                problems.notes AS notes,
+                problems.time_restriction AS time_restriction,
+                problems.memory_restriction AS memory_restriction,
+                problems.private AS private,
+                problems.approved AS approved,
+                problems.edition AS edition
+            FROM problems
+            INNER JOIN users ON problems.author_user_id = users.id
+            WHERE problems.id = %(problem_id)s
+            LIMIT 1
+        """, {'problem_id': problem_id})
+        problem: Any = cursor.fetchone()
+        cursor.execute("""
+            SELECT 
+                custom_checkers.id AS id,
+                custom_checkers.problem_id,
+                custom_checkers.code,
+                languages.name AS language_name,
+                languages.version AS language_version
+            FROM custom_checkers
+            INNER JOIN languages ON custom_checkers.language_id = languages.id
+            WHERE custom_checkers.problem_id = %(problem_id)s
+            LIMIT 1
+        """, {'problem_id': problem_id})
+        problem['custom_checker'] = cursor.fetchone()
+        cursor.execute("""
+            SELECT id, problem_id, input, solution, score, opened
+            FROM test_cases
+            WHERE problem_id = %(problem_id)s
+        """, {'problem_id': problem_id})
+        problem['test_cases'] = list(cursor.fetchall())
+        return JSONResponse(problem)
+
 def check_submission(submission_id: int, problem_id: int, code: str, language: str, no_realtime: bool, user_id: int) -> None:
     cursor: MySQLCursorAbstract
     with ConnectionCursor(db_config) as cursor:
-        create_files_result: CreateFilesResultLib = lib.create_files(submission_id, code, language, 1)
-        if create_files_result.status == 0:
+        cursor.execute("""
+            SELECT 
+                custom_checkers.id AS id,
+                custom_checkers.problem_id,
+                custom_checkers.code,
+                languages.name AS language_name,
+                languages.version AS language_version
+            FROM custom_checkers
+            INNER JOIN languages ON custom_checkers.language_id = languages.id
+            WHERE custom_checkers.problem_id = %(problem_id)s
+            LIMIT 1
+        """, {'problem_id': problem_id})
+        custom_check: int = 0
+        custom_check_language: str = ''
+        custom_check_code: str = ''
+        custom_checker: Any = cursor.fetchone()
+        if custom_checker is not None:
+            custom_check = 1
+            custom_check_language = f"{custom_checker['language_name']} ({custom_checker['language_version']})"
+            custom_check_code = custom_checker['code']
+        create_files_result: CreateFilesResultLib = lib.create_files(submission_id, code, language, 1, custom_check, custom_check_language, custom_check_code)
+        if create_files_result.status == 0 or create_files_result.status == 6:
             cursor.execute("""
                 UPDATE submissions
                 SET compiled = 1, compilation_details = ''
@@ -1453,17 +1655,17 @@ def check_submission(submission_id: int, problem_id: int, code: str, language: s
         total_verdict: tuple[int, str] = (-1, "")
         for index, test_case in enumerate(test_cases):
             if create_files_result.status == 0:
-                test_result: TestResultLib = lib.check_test_case(submission_id, test_case['id'], language, test_case['input'], test_case['solution'], problem['time_restriction'], problem['memory_restriction'])
+                test_result: TestResultLib = lib.check_test_case(submission_id, test_case['id'], language, test_case['input'], test_case['solution'], problem['time_restriction'], problem['memory_restriction'], custom_check, custom_check_language)
                 if test_result.status == 0:
                     correct_score += test_case['score']
             else:
-                test_result: TestResultLib = TestResultLib(status=create_files_result.status, time=0, cpu_time=0, virtual_memory=0, physical_memory=0)
+                test_result: TestResultLib = TestResultLib(status=create_files_result.status, time=0, cpu_time=0, physical_memory=0)
             cursor.execute("SELECT text FROM verdicts WHERE id = %(verdict_id)s LIMIT 1", {'verdict_id': test_result.status + 2})
             verdict: Any = cursor.fetchone()
             cursor.execute("""
-                INSERT INTO submission_results (submission_id, test_case_id, verdict_id, time_taken, cpu_time_taken, virtual_memory_taken, physical_memory_taken)
-                VALUES (%(submission_id)s, %(test_case_id)s, %(verdict_id)s, %(time_taken)s, %(cpu_time_taken)s, %(virtual_memory_taken)s, %(physical_memory_taken)s)
-            """, {'submission_id': submission_id, 'test_case_id': test_case['id'], 'verdict_id': test_result.status + 2, 'time_taken': test_result.time, 'cpu_time_taken': test_result.cpu_time, 'virtual_memory_taken': test_result.virtual_memory, 'physical_memory_taken': test_result.physical_memory})
+                INSERT INTO submission_results (submission_id, test_case_id, verdict_id, time_taken, cpu_time_taken, physical_memory_taken)
+                VALUES (%(submission_id)s, %(test_case_id)s, %(verdict_id)s, %(time_taken)s, %(cpu_time_taken)s, %(physical_memory_taken)s)
+            """, {'submission_id': submission_id, 'test_case_id': test_case['id'], 'verdict_id': test_result.status + 2, 'time_taken': test_result.time, 'cpu_time_taken': test_result.cpu_time, 'physical_memory_taken': test_result.physical_memory})
             if not no_realtime:
                 run(current_websockets[submission_id].send_message(dumps({
                     'type': 'result',
