@@ -17,4 +17,4 @@ def get_current_unix_time() -> int:
     raise HTTPException(status_code=500, detail="Internal Server Error")
 
 def get_current_utc_datetime() -> datetime:
-    return datetime.fromtimestamp(float(get_current_unix_time()))
+    return datetime.utcfromtimestamp(float(get_current_unix_time()))
