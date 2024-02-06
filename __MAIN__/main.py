@@ -26,7 +26,7 @@ from typing import Annotated
 from checker_connection import Library, TestResultLib, CreateFilesResultLib, DebugResultLib
 from asyncio import run, Event
 from concurrent.futures import ThreadPoolExecutor
-from current_websocket import CurrentWebsocket
+from current_websocket import CurrentWebSocket
 from typing import Any
 from json import dumps
 from smtplib import SMTP_SSL
@@ -38,7 +38,7 @@ from cache import cache
 from validation import text_max_length
 
 checking_queue: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=4)
-current_websockets: dict[int, CurrentWebsocket] = {}
+current_websockets: dict[int, CurrentWebSocket] = {}
 
 debugging_queue: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=2)
 
@@ -1746,7 +1746,7 @@ def post_submission(submission: SubmissionCreate, authorization: Annotated[str |
         if submission_id is None:
             raise HTTPException(status_code=500, detail="Internal server error")
         if not no_realtime:
-            current_websockets[submission_id] = CurrentWebsocket(None, None, [])
+            current_websockets[submission_id] = CurrentWebSocket(None, None, [])
             checking_queue.submit(check_submission, submission_id, submission.problem_id, submission.code, f"{submission.language_name} ({submission.language_version})", no_realtime, token.id)
             return JSONResponse({
                 'submission_id': submission_id
@@ -1884,7 +1884,7 @@ def get_submission(submission_id: int, authorization: Annotated[str | None, Head
             submission['realtime_link'] = f"ws{'' if config['API_DOMAIN'] is not None and config['API_DOMAIN'][:config['API_DOMAIN'].find(':')] == 'localhost' else 's'}://{config['API_DOMAIN']}/ws/submissions/{submission_id}/realtime"
             return JSONResponse(submission, status_code=202)
 
-@app.get("/ws/submissions/{submission_id}/realtime", tags=["Submissions", "Websockets"], description="Dummy for the same URI websocket edndpoint. Each response describe possible message from the socket", responses={
+@app.get("/ws/submissions/{submission_id}/realtime", tags=["Submissions", "WebSockets"], description="Dummy for the same URI websocket edndpoint. Each response describe possible message from the socket", responses={
     200: { 'model': WebcoketSubmissionsTotals, 'description': "Total results" },
     202: { 'model': WebcoketSubmissionsResult, 'description': "Partial result" },
     404: { 'model': WebcoketSubmissionsMessage, 'description': "There is no submission testing with such id" },
@@ -3130,7 +3130,7 @@ def post_competition_submission(competition_id: int, submission: SubmissionCreat
             VALUES (%(competition_id)s, %(submission_id)s, %(team_id)s)
         """, {'competition_id': competition_id, 'submission_id': submission_id, 'team_id': team['id']})
         if not no_realtime:
-            current_websockets[submission_id] = CurrentWebsocket(None, None, [])
+            current_websockets[submission_id] = CurrentWebSocket(None, None, [])
             checking_queue.submit(check_submission, submission_id, submission.problem_id, submission.code, f"{submission.language_name} ({submission.language_version})", no_realtime, token.id)
             return JSONResponse({
                 'submission_id': submission_id

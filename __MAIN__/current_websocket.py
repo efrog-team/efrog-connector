@@ -2,7 +2,7 @@ from fastapi import WebSocket
 from asyncio import Event
 from copy import deepcopy
 
-class CurrentWebsocket():
+class CurrentWebSocket():
     def __init__(self, websocket: WebSocket | None, flag: Event | None, messages: list[str]) -> None:
         self.websocket: WebSocket | None = websocket
         self.flag: Event | None = flag

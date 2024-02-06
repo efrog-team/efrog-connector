@@ -166,6 +166,7 @@ class VerdictSubmission(Enum):
     memory_limit_exceeded = "Memory Limit Exceeded"
     runtime_error = "Runtime Error"
     compilation_error = "Compilation Error"
+    custom_checker_error = "Custom Checker Error"
     internal_server_error = "Internal Server Error"
 
 class SubmissionCreate(BaseModel):
