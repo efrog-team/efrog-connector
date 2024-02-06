@@ -44,7 +44,7 @@ debugging_queue: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=2)
 
 testing_users: dict[int, bool] = {}
 
-totp = TOTP(cache.get('totp_secret'))
+totp: TOTP = TOTP(cache.get('totp_secret'))
 
 admin_continuous_failed_attempts: int = 0
 
