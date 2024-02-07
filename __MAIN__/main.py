@@ -1194,6 +1194,12 @@ def delete_problem(problem_id: int, authorization: Annotated[str | None, Header(
         """, {'problem_id': problem_id, 'author_user_id': token.id})
         cursor.execute("UPDATE users SET test_cases_quota = test_cases_quota + %(deleted)s WHERE id = %(id)s", {'id': token.id, 'deleted': cursor.rowcount})
         cursor.execute("""
+            DELETE custom_checkers
+            FROM custom_checkers
+            INNER JOIN problems ON custom_checkers.problem_id = problems.id
+            WHERE problems.id = %(problem_id)s AND problems.author_user_id = %(author_user_id)s
+        """, {'problem_id': problem_id, 'author_user_id': token.id})
+        cursor.execute("""
             DELETE problems
             FROM problems
             WHERE id = %(problem_id)s AND author_user_id = %(author_user_id)s
