@@ -399,22 +399,30 @@ def put_user(username: str, user: UserUpdate, authorization: Annotated[str | Non
         user_db: Any = cursor.fetchone()
         if user_db is None:
             raise HTTPException(status_code=404, detail="User does not exist")
-        if user.email is not None and user.email != "":
+        if user.email is not None:
+            if user.email == "":
+                raise HTTPException(status_code=400, detail="Email is empty")
             if len(user.email) > text_max_length['tinytext']:
                 raise HTTPException(status_code=400, detail="Email is too long")
             try:
                 cursor.execute("UPDATE users SET email = %(email)s WHERE username = BINARY %(username)s", {'email': user.email, 'username': username})
             except IntegrityError:
                 raise HTTPException(status_code=409, detail="This email is already taken")
-        if user.name is not None and user.name != "":
+        if user.name is not None:
+            if user.name == "":
+                raise HTTPException(status_code=400, detail="Name is empty")
             if len(user.name) > text_max_length['tinytext']:
                 raise HTTPException(status_code=400, detail="Name is too long")
             cursor.execute("UPDATE users SET name = %(name)s WHERE username = BINARY %(username)s", {'name': user.name, 'username': username})
-        if user.password is not None and user.password != "":
+        if user.password is not None:
+            if user.password == "":
+                raise HTTPException(status_code=400, detail="Password is empty")
             if len(user.password) > text_max_length['tinytext']:
                 raise HTTPException(status_code=400, detail="Password is too long")
             cursor.execute("UPDATE users SET password = %(password)s WHERE username = BINARY %(username)s", {'password': hash_hex(user.password), 'username': username})
-        if user.username is not None and user.username != "":
+        if user.username is not None:
+            if user.username == "":
+                raise HTTPException(status_code=400, detail="Username is empty")
             if len(user.username) < 3:
                 cursor.execute("UPDATE users SET email = %(email)s WHERE username = BINARY %(username)s", {'email': user_db['email'], 'username': username})
                 cursor.execute("UPDATE users SET name = %(name)s WHERE username = BINARY %(username)s", {'name': user_db['name'], 'username': username})
@@ -1086,27 +1094,31 @@ def put_problem(problem_id: int, problem: ProblemUpdate, authorization: Annotate
     token: Token = decode_token(authorization)
     update_set: str = ""
     update_dict: dict[str, Any] = {'problem_id': problem_id, 'author_user_id': token.id}
-    if problem.name is not None and problem.name != '':
+    if problem.name is not None:
+        if problem.name == "":
+            raise HTTPException(status_code=400, detail="Name is empty")
         if len(problem.name) > text_max_length['text']:
             raise HTTPException(status_code=400, detail="Name is too long")
         update_set += "name = %(name)s, "
         update_dict['name'] = problem.name
-    if problem.statement is not None and problem.statement != '':
+    if problem.statement is not None:
+        if problem.statement == "":
+            raise HTTPException(status_code=400, detail="Statement is empty")
         if len(problem.statement) > text_max_length['text']:
             raise HTTPException(status_code=400, detail="Statement is too long")
         update_set += "statement = %(statement)s, "
         update_dict['statement'] = problem.statement
-    if problem.input_statement is not None and problem.input_statement != '':
+    if problem.input_statement is not None:
         if len(problem.input_statement) > text_max_length['text']:
             raise HTTPException(status_code=400, detail="Input statement is too long")
         update_set += "input_statement = %(input_statement)s, "
         update_dict['input_statement'] = problem.input_statement
-    if problem.output_statement is not None and problem.output_statement != '':
+    if problem.output_statement is not None:
         if len(problem.output_statement) > text_max_length['text']:
             raise HTTPException(status_code=400, detail="Output statement is too long")
         update_set += "output_statement = %(output_statement)s, "
         update_dict['output_statement'] = problem.output_statement
-    if problem.notes is not None and problem.notes != '':
+    if problem.notes is not None:
         if len(problem.notes) > text_max_length['text']:
             raise HTTPException(status_code=400, detail="Notes are too long")
         update_set += "notes = %(notes)s, "
@@ -1369,17 +1381,19 @@ def put_test_case(problem_id: int, test_case_id: int, test_case: TestCaseUpdate,
     token: Token = decode_token(authorization)
     update_set: str = ""
     update_dict: dict[str, Any] = {'test_case_id': test_case_id, 'problem_id': problem_id, 'author_user_id': token.id}
-    if test_case.input is not None and test_case.input != '':
+    if test_case.input is not None:
         if len(test_case.input) > text_max_length['mediumtext']:
             raise HTTPException(status_code=400, detail="Input is too long")
         update_set += "test_cases.input = %(input)s, "
         update_dict['input'] = test_case.input
-    if test_case.solution is not None and test_case.solution != '':
+    if test_case.solution is not None:
         if len(test_case.solution) > text_max_length['mediumtext']:
             raise HTTPException(status_code=400, detail="Solution is too long")
         update_set += "test_cases.solution = %(solution)s, "
         update_dict['solution'] = test_case.solution
-    if test_case.score is not None and test_case.score >= 0:
+    if test_case.score is not None:
+        if test_case.score < 0:
+            raise HTTPException(status_code=400, detail="Score must be greater than or equal 0")
         update_set += "test_cases.score = %(score)s, "
         update_dict['score'] = test_case.score
     cursor: MySQLCursorAbstract
@@ -1499,7 +1513,9 @@ def put_custom_checker(problem_id: int, custom_checker: CustomCheckerUpdate, aut
     token: Token = decode_token(authorization)
     update_set: str = ""
     update_dict: dict[str, Any] = {'problem_id': problem_id, 'author_user_id': token.id}
-    if custom_checker.code is not None and custom_checker.code != '':
+    if custom_checker.code is not None:
+        if custom_checker.code == "":
+            raise HTTPException(status_code=400, detail="Code cannot be empty")
         if len(custom_checker.code) > text_max_length['text']:
             raise HTTPException(status_code=400, detail="Code is too long")
         update_set += "custom_checkers.code = %(code)s, "
@@ -2498,22 +2514,24 @@ def put_competition(competition_id: int, competition: CompetitionUpdate, authori
     with ConnectionCursor(db_config) as cursor:
         update_set: str = ""
         update_dict: dict[str, Any] = {'competition_id': competition_id, 'author_user_id': token.id}
-        if competition.name is not None and competition.name != '':
+        if competition.name is not None:
+            if competition.name == "":
+                raise HTTPException(status_code=400, detail="Name is empty")
             if len(competition.name) > text_max_length['text']:
                 raise HTTPException(status_code=400, detail="Name is too long")
             update_set += "name = %(name)s, "
             update_dict['name'] = competition.name
-        if competition.description is not None and competition.description != '':
+        if competition.description is not None:
             if len(competition.description) > text_max_length['text']:
                 raise HTTPException(status_code=400, detail="Description is too long")
             update_set += "description = %(description)s, "
             update_dict['description'] = competition.description
-        if competition.start_time is not None and competition.start_time != '':
+        if competition.start_time is not None:
             if convert_and_validate_datetime(competition.start_time) < get_current_utc_datetime():
                 raise HTTPException(status_code=400, detail="Start time is in the past")
             update_set += "start_time = %(start_time)s, "
             update_dict['start_time'] = competition.start_time
-        if competition.end_time is not None and competition.end_time != '':
+        if competition.end_time is not None:
             if (not past_times and convert_and_validate_datetime(competition.end_time) < get_current_utc_datetime()):
                 raise HTTPException(status_code=400, detail="End time is in the past")
             if competition.start_time is not None and competition.start_time != '' and convert_and_validate_datetime(competition.start_time) > convert_and_validate_datetime(competition.end_time):
@@ -2526,7 +2544,9 @@ def put_competition(competition_id: int, competition: CompetitionUpdate, authori
                 raise HTTPException(status_code=400, detail="End time is before start time")
             update_set += "end_time = %(end_time)s, "
             update_dict['end_time'] = competition.end_time
-        if competition.maximum_team_members_number is not None and competition.maximum_team_members_number > 0:
+        if competition.maximum_team_members_number is not None:
+            if competition.maximum_team_members_number < 0:
+                raise HTTPException(status_code=400, detail="Maximum team members number cannot be less than 0")
             update_set += "maximum_team_members_number = %(maximum_team_members_number)s, "
             update_dict['maximum_team_members_number'] = competition.maximum_team_members_number
         if competition.auto_confirm_participants is not None:
@@ -2541,10 +2561,14 @@ def put_competition(competition_id: int, competition: CompetitionUpdate, authori
         if competition.count_scores_as_percentages is not None:
             update_set += "count_scores_as_percentages = %(count_scores_as_percentages)s, "
             update_dict['count_scores_as_percentages'] = competition.count_scores_as_percentages
-        if competition.time_penalty_coefficient is not None and competition.time_penalty_coefficient >= 0:
+        if competition.time_penalty_coefficient is not None:
+            if competition.time_penalty_coefficient < 0:
+                raise HTTPException(status_code=400, detail="Time penalty coefficient cannot be less than 0")
             update_set += "time_penalty_coefficient = %(time_penalty_coefficient)s, "
             update_dict['time_penalty_coefficient'] = competition.time_penalty_coefficient
-        if competition.wrong_attempt_penalty is not None and competition.wrong_attempt_penalty >= 0:
+        if competition.wrong_attempt_penalty is not None:
+            if competition.wrong_attempt_penalty < 0:
+                raise HTTPException(status_code=400, detail="Wrong attempt penalty cannot be less than 0")
             update_set += "wrong_attempt_penalty = %(wrong_attempt_penalty)s, "
             update_dict['wrong_attempt_penalty'] = competition.wrong_attempt_penalty
         if update_set == "":
