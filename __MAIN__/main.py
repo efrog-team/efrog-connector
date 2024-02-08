@@ -2113,7 +2113,7 @@ def delete_problem_submissions_authors(problem_id: int, authorization: Annotated
     return JSONResponse({})
 
 def run_debug(debug_submission_id: int, debug_language: str, debug_code: str, debug_inputs: list[str], user_id: int) -> list[dict[str, str | int]]:
-    create_files_result: CreateFilesResultLib = lib.create_files(debug_submission_id, debug_code, debug_language, 0)
+    create_files_result: CreateFilesResultLib = lib.create_files(debug_submission_id, debug_code, debug_language, 0, 0, "", "")
     results: list[dict[str, str | int]] = []
     for index, debug_input in enumerate(debug_inputs):
         if create_files_result.status == 0:
