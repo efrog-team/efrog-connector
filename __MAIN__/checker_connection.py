@@ -65,16 +65,28 @@ class Library:
         self.lib: CDLL = self.get_raw()
 
     def create_files(self, submission_id: int, code: str, language: str, submission: int, custom_check: int, custom_check_language: str, custom_check_code: str) -> CreateFilesResultLib:
-        result: Any = self.lib.create_files(submission_id, code.encode('utf-8'), language.encode('utf-8'), submission, custom_check, custom_check_language.encode('utf-8'), custom_check_code.encode('utf-8')).contents
-        return CreateFilesResultLib(result.status, result.description.decode('utf-8'))
+        try:
+            result: Any = self.lib.create_files(submission_id, code.encode('utf-8'), language.encode('utf-8'), submission, custom_check, custom_check_language.encode('utf-8'), custom_check_code.encode('utf-8')).contents
+            return CreateFilesResultLib(result.status, result.description.decode('utf-8'))
+        except:
+            return CreateFilesResultLib(7, "")
 
     def check_test_case(self, submission_id: int, test_case_id: int, language: str, input: str, solution: str, time_limit: int, memory_limit: int, custom_check: int, custom_check_language: str) -> TestResultLib:
-        result: Any = self.lib.check_test_case(submission_id, test_case_id, language.encode('utf-8'), input.encode('utf-8'), solution.encode('utf-8'), time_limit, memory_limit, 1, custom_check, custom_check_language.encode('utf-8')).contents
-        return TestResultLib(result.status, result.time, result.cpu_time, result.physical_memory)
+        try:
+            result: Any = self.lib.check_test_case(submission_id, test_case_id, language.encode('utf-8'), input.encode('utf-8'), solution.encode('utf-8'), time_limit, memory_limit, 1, custom_check, custom_check_language.encode('utf-8')).contents
+            return TestResultLib(result.status, result.time, result.cpu_time, result.physical_memory)
+        except:
+            return TestResultLib(7, 0, 0, 0)
 
     def debug(self, debug_submission_id: int, debug_test_id: int, language: str, input: str) -> DebugResultLib:
-        result: Any = self.lib.debug(debug_submission_id, debug_test_id, language.encode('utf-8'), input.encode('utf-8'), 0).contents
-        return DebugResultLib(result.status, result.time, result.cpu_time, result.physical_memory, result.output.decode('utf-8'))
+        try:
+            result: Any = self.lib.debug(debug_submission_id, debug_test_id, language.encode('utf-8'), input.encode('utf-8'), 0).contents
+            return DebugResultLib(result.status, result.time, result.cpu_time, result.physical_memory, result.output.decode('utf-8'))
+        except:
+            return DebugResultLib(7, 0, 0, 0, "")
 
     def delete_files(self, submission_id: int, submission: int) -> int:
-        return self.lib.delete_files(submission_id, submission)
+        try:
+            return self.lib.delete_files(submission_id, submission)
+        except:
+            return 1
