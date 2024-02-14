@@ -15,7 +15,7 @@ from models import CompetitionCreate, CompetitionId, CompetitionUpdate, Competit
 from models import CompetitionParticipantCreate, CompetitionParticipantFull, CompetitionParticipantsFull
 from models import CompetitionProblemsCreate
 from models import CompetitionScoreboard
-from models import ProblemsOrCompetitions, DbOrCache, SetOrIncrement, ActivateOrDeactivate, CoachOrContestant, ConfirmOrDecline, PrivateOrPublic, OpenedOrClosed, IndividualsOrTeams, AuthoredOrParticipated
+from models import DbOrCache, ProblemsOrCompetitions, ApproveOrUnapprove, SetOrIncrement, ActivateOrDeactivate, CoachOrContestant, ConfirmOrDecline, PrivateOrPublic, OpenedOrClosed, IndividualsOrTeams, AuthoredOrParticipated
 from mysql.connector.abstracts import MySQLCursorAbstract
 from mysql.connector.errors import IntegrityError
 from config import config, email_config, db_config
@@ -147,8 +147,8 @@ def put_admin_verify(admin_password: AdminPassword, username: str) -> JSONRespon
         cursor.execute("INSERT INTO team_members (member_user_id, team_id, coach, confirmed, declined) VALUES (%(member_user_id)s, %(team_id)s, 0, 1, 0)", {'member_user_id': user_db['id'], 'team_id': team_id})
     return JSONResponse({})
 
-@app.put("/admin/{problems_or_competitions}/{id}/approve", include_in_schema=False)
-def put_admin_approve(admin_password: AdminPassword, problems_or_competitions: ProblemsOrCompetitions, id: int) -> JSONResponse:
+@app.put("/admin/{problems_or_competitions}/{id}/{approve_or_unapprove}", include_in_schema=False)
+def put_admin_approve(admin_password: AdminPassword, problems_or_competitions: ProblemsOrCompetitions, id: int, approve_or_unapprove: ApproveOrUnapprove) -> JSONResponse:
     global admin_continuous_failed_attempts
     if cache.get('block_admin') == 'True':
         raise HTTPException(status_code=403, detail="Admin request is blocked")
@@ -161,9 +161,9 @@ def put_admin_approve(admin_password: AdminPassword, problems_or_competitions: P
     cursor: MySQLCursorAbstract
     with ConnectionCursor(db_config) as cursor:
         if problems_or_competitions is ProblemsOrCompetitions.problems:
-            cursor.execute("UPDATE problems SET approved = 1 WHERE id = %(id)s", {'id': id})
+            cursor.execute("UPDATE problems SET approved = %(approve_or_unapprove)s WHERE id = %(id)s", {'id': id, 'approve_or_unapprove': approve_or_unapprove is ApproveOrUnapprove.approve})
         else:
-            cursor.execute("UPDATE competitions SET approved = 1 WHERE id = %(id)s", {'id': id})
+            cursor.execute("UPDATE competitions SET approved = %(approve_or_unapprove)s WHERE id = %(id)s", {'id': id, 'approve_or_unapprove': approve_or_unapprove is ApproveOrUnapprove.approve})
         if cursor.rowcount == 0:
             raise HTTPException(status_code=404, detail="Problem or competition does not exist or is already approved")
     return JSONResponse({})

@@ -360,6 +360,10 @@ class ProblemsOrCompetitions(str, Enum):
     problems = "problems"
     competitions = "competitions"
 
+class ApproveOrUnapprove(str, Enum):
+    approve = "approve"
+    unapprove = "unapprove"
+
 class SetOrIncrement(str, Enum):
     set = "set"
     increment = "increment"
