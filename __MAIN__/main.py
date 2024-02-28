@@ -539,6 +539,26 @@ def get_team(team_name: str) -> JSONResponse:
             raise HTTPException(status_code=404, detail="Team does not exist")
         return JSONResponse(team)
 
+def check_if_team_can_be_edited(cursor: MySQLCursorAbstract, team_name: str) -> bool:
+    cursor.execute("""
+        SELECT 1
+        FROM competition_participants
+        INNER JOIN teams ON competition_participants.team_id = teams.id
+        INNER JOINT competitions ON competition_participants.competition_id = competitions.id
+        WHERE teams.name = BINARY %(team_name)s AND teams.individual = 0 AND competitions.end_time < %(now)s
+    """, {'team_name': team_name, 'now': get_current_utc_datetime()})
+    return len(cursor.fetchall()) == 0
+
+@app.get("/teams/{team_name}/check-if-can-be-edited", tags=["Teams"], description="Check if a team can be edited", responses={
+    200: { 'model': Can, 'description': "All good" }
+})
+def get_check_if_team_can_be_edited(team_name: str) -> JSONResponse:
+    cursor: MySQLCursorAbstract
+    with ConnectionCursor(db_config) as cursor:
+        return JSONResponse({
+            'can': check_if_team_can_be_edited(cursor, team_name)
+        })
+
 @app.put("/teams/{team_name}", tags=["Teams"], description="Update a team", responses={
     200: { 'model': Empty, 'description': "All good" },
     400: { 'model': Error, 'description': "Invalid data" },
@@ -556,6 +576,8 @@ def put_team(team_name: str, team: Team, authorization: Annotated[str | None, He
         raise HTTPException(status_code=400, detail="Name is too long")
     cursor: MySQLCursorAbstract
     with ConnectionCursor(db_config) as cursor:
+        if not check_if_team_can_be_edited(cursor, team_name):
+            raise HTTPException(status_code=403, detail="This team cannot be edited")
         try:
             cursor.execute("UPDATE teams SET name = %(new_name)s WHERE name = BINARY %(name)s AND owner_user_id = %(owner_user_id)s AND individual = 0", {'new_name': team.name, 'name': team_name, 'owner_user_id': token.id})
         except IntegrityError:
@@ -622,6 +644,8 @@ def put_activate_team(team_name: str, activate_or_deactivate: ActivateOrDeactiva
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
     with ConnectionCursor(db_config) as cursor:
+        if not check_if_team_can_be_edited(cursor, team_name):
+            raise HTTPException(status_code=403, detail="This team cannot be edited")
         cursor.execute("UPDATE teams SET active = %(activate_or_deactivate)s WHERE name = BINARY %(name)s AND owner_user_id = %(owner_user_id)s AND individual = 0", {'name': team_name, 'owner_user_id': token.id, 'activate_or_deactivate': activate_or_deactivate is ActivateOrDeactivate.activate})
         if cursor.rowcount == 0:
             detect_error_teams(cursor, team_name, token.id, False, True)
@@ -715,6 +739,8 @@ def post_team_member(team_member: TeamMember, team_name: str, authorization: Ann
         if member is None:
             raise HTTPException(status_code=404, detail="User does not exist")
         member_user_id: int = member['id']
+        if not check_if_team_can_be_edited(cursor, team_name):
+            raise HTTPException(status_code=403, detail="This team cannot be edited")
         cursor.execute("SELECT id, owner_user_id FROM teams WHERE name = BINARY %(name)s AND individual = 0 LIMIT 1", {'name': team_name})
         team: Any = cursor.fetchone()
         if team is None:
@@ -809,6 +835,8 @@ def put_team_member_make_coach_or_contestant(team_name: str, member_username: st
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
     with ConnectionCursor(db_config) as cursor:
+        if not check_if_team_can_be_edited(cursor, team_name):
+            raise HTTPException(status_code=403, detail="This team cannot be edited")
         cursor.execute("""
             UPDATE team_members
             INNER JOIN users ON team_members.member_user_id = users.id
@@ -831,6 +859,8 @@ def put_team_member_confirm_or_decline(team_name: str, member_username: str, con
         raise HTTPException(status_code=403, detail="You are trying to change not your membership")
     cursor: MySQLCursorAbstract
     with ConnectionCursor(db_config) as cursor:
+        if not check_if_team_can_be_edited(cursor, team_name):
+            raise HTTPException(status_code=403, detail="This team cannot be edited")
         cursor.execute("""
             UPDATE team_members
             INNER JOIN users ON team_members.member_user_id = users.id
@@ -1081,7 +1111,7 @@ def update_edition(cursor: MySQLCursorAbstract, problem_id: int) -> None:
         UPDATE competition_problems
         INNER JOIN competitions ON competition_problems.competition_id = competitions.id
         SET problem_edition = problem_edition + 1
-        WHERE competition_problems.problem_id = %(problem_id)s AND competitions.end_time > %(now)s
+        WHERE competition_problems.problem_id = %(problem_id)s AND competitions.end_time < %(now)s
     """, {'problem_id': problem_id, 'now': get_current_utc_datetime()})
 
 @app.put("/problems/{problem_id}", tags=["Problems"], description="Update a problem", responses={
@@ -2649,31 +2679,25 @@ def post_competition_participant(competition_id: int, participant: CompetitionPa
         competition: Any = cursor.fetchone()
         if competition['author_user_id'] == token.id or competition['auto_confirm_participants']:
             author_confirmed = True
-        cursor.execute("SELECT id, owner_user_id FROM teams WHERE name = BINARY %(name)s AND individual = %(individual)s LIMIT 1", {'name': participant.username_or_team_name, 'individual': participant.individual})
+        cursor.execute("SELECT id, owner_user_id FROM teams WHERE name = BINARY %(name)s AND individual = %(individual)s AND active = 1 LIMIT 1", {'name': participant.username_or_team_name, 'individual': participant.individual})
         team: Any = cursor.fetchone()
         if team is None:
-            raise HTTPException(status_code=404, detail="User or team does not exist")
+            raise HTTPException(status_code=404, detail="User or team does not exist or is team is inactive")
         user_or_team_id = team['id']
         if team['owner_user_id'] == token.id:
             participant_confirmed = True
         if (not author_confirmed) and (not participant_confirmed):
-            raise HTTPException(status_code=403, detail="You are neither competition author nor team owner nor user whom you are trying to add")
-        cursor.execute("""
-            SELECT COUNT(1) AS team_members_number
-            FROM team_members
-            WHERE team_id = %(team_id)s
-        """, {'team_id': user_or_team_id})
-        counter: Any = cursor.fetchone()
-        if counter['team_members_number'] > competition['maximum_team_members_number']:
-            raise HTTPException(status_code=400, detail="There are more team members than allowed")
-        cursor.execute("SELECT member_user_id FROM team_members WHERE team_id = %(team_id)s AND coach = 0", {'team_id': user_or_team_id})
+            raise HTTPException(status_code=403, detail="You are neither competition author nor team owner nor user who you are trying to add")
+        cursor.execute("SELECT member_user_id FROM team_members WHERE team_id = %(team_id)s AND confirmed = 1 AND coach = 0", {'team_id': user_or_team_id})
         team_members: list[Any] = list(cursor.fetchall())
+        if len(team_members) > competition['maximum_team_members_number']:
+            raise HTTPException(status_code=400, detail="There are more team members than allowed")
         for team_member in team_members:
             cursor.execute("""
                 SELECT 1
                 FROM team_members
                 INNER JOIN competition_participants ON team_members.team_id = competition_participants.team_id
-                WHERE competition_participants.competition_id = %(id)s AND competition_participants.author_confirmed = 1 AND team_members.member_user_id = %(user_id)s AND team_members.confirmed = 1
+                WHERE competition_participants.competition_id = %(id)s AND competition_participants.author_confirmed = 1 AND team_members.member_user_id = %(user_id)s AND team_members.confirmed = 1 AND team_members.coach = 0
                 LIMIT 1
             """, {'id': competition_id, 'user_id': team_member['member_user_id']})
             if cursor.fetchone() is not None:
@@ -3133,12 +3157,12 @@ def post_competition_submission(competition_id: int, submission: SubmissionCreat
             FROM teams
             INNER JOIN competition_participants ON teams.id = competition_participants.team_id
             INNER JOIN team_members ON teams.id = team_members.team_id
-            WHERE competition_participants.competition_id = %(competition_id)s AND competition_participants.author_confirmed = 1 AND team_members.member_user_id = %(user_id)s AND team_members.confirmed = 1
+            WHERE competition_participants.competition_id = %(competition_id)s AND competition_participants.author_confirmed = 1 AND team_members.member_user_id = %(user_id)s AND team_members.confirmed = 1 AND team_members.coach = 0
             LIMIT 1
         """, {'competition_id': competition_id, 'user_id': token.id})
         team: Any = cursor.fetchone()
         if team is None:
-            raise HTTPException(status_code=403, detail="You are not a confirmed member of this competition")
+            raise HTTPException(status_code=403, detail="You are not a participant of this competition")
         cursor.execute("SELECT 1 FROM problems WHERE id = %(problem_id)s LIMIT 1", {'problem_id': submission.problem_id})
         if cursor.fetchone() is None:
             raise HTTPException(status_code=404, detail="Problem does not exist")
