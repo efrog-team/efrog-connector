@@ -45,7 +45,7 @@ class Library:
     def compile(self) -> None:
         if not os.path.exists(os.path.dirname(__file__).replace('\\', '/') + "/checker_files"):
             os.mkdir(os.path.dirname(__file__).replace('\\', '/') + "/checker_files")
-        os.system(f"gcc-11 -fPIC -shared -o checker_main.so ../../Checker{'/dev' if config['DEV_MODE'] == 'True' else ''}/main.c")
+        os.system(f"gcc-11 -fPIC -shared -o checker_main.so ../../Checker{'/dev' if config['DEV_MODE'] == 'True' else ''}/main.c -lm -lcjson -I /usr/local/include -L /usr/local/lib")
         os.system(f"gcc-11 -o run ../../Checker{'/dev' if config['DEV_MODE'] == 'True' else ''}/run.c -lm")
     
     def get_raw(self) -> CDLL:
