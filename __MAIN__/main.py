@@ -1750,9 +1750,9 @@ def check_submission(submission_id: int, problem_id: int, code: str, language: s
         lib.delete_files(submission_id, 1)
         cursor.execute("""
             UPDATE submissions
-            SET checked = 1, correct_score = %(correct_score)s, total_score = %(total_score)s, total_verdict_id = %(total_verdict_id)s
+            SET checked = 1, correct_score = %(correct_score)s, total_verdict_id = %(total_verdict_id)s
             WHERE id = %(submission_id)s
-        """, {'submission_id': submission_id, 'correct_score': correct_score, 'total_score': total_score, 'total_verdict_id': total_verdict[0] + 2})
+        """, {'submission_id': submission_id, 'correct_score': correct_score, 'total_verdict_id': total_verdict[0] + 2})
         if not no_realtime:
             current_websockets[submission_id].safe_set_flag()
             if current_websockets[submission_id].websocket is None and current_websockets[submission_id].flag is None:
@@ -1783,6 +1783,8 @@ def post_submission(submission: SubmissionCreate, authorization: Annotated[str |
         detect_error_problems(cursor, submission.problem_id, token.id, False, True, True)
         cursor.execute("SELECT edition FROM problems WHERE id = %(id)s LIMIT 1", {'id': submission.problem_id})
         problem: Any = cursor.fetchone()
+        cursor.execute("SELECT SUM(score) as total_score FROM test_cases WHERE problem_id = %(problem_id)s", {'problem_id': submission.problem_id})
+        total_score: int = cursor.fetchone()['total_score']
         cursor.execute("SELECT id FROM languages WHERE name = %(name)s AND version = %(version)s AND supported = 1 LIMIT 1", {'name': submission.language_name, 'version': submission.language_version})
         language: Any = cursor.fetchone()
         if language is None:
@@ -1792,8 +1794,8 @@ def post_submission(submission: SubmissionCreate, authorization: Annotated[str |
         testing_users[token.id] = True
         cursor.execute("""
             INSERT INTO submissions (author_user_id, problem_id, code, language_id, time_sent, checked, compiled, compilation_details, correct_score, total_score, total_verdict_id, problem_edition)
-            VALUES (%(author_user_id)s, %(problem_id)s, %(code)s, %(language_id)s, %(now)s, 0, 0, '', 0, 0, 1, %(problem_edition)s)
-        """, {'author_user_id': token.id, 'problem_id': submission.problem_id, 'code': submission.code, 'language_id': language['id'], 'problem_edition': problem['edition'], 'now': get_current_utc_datetime()})
+            VALUES (%(author_user_id)s, %(problem_id)s, %(code)s, %(language_id)s, %(now)s, 0, 0, '', 0, %(total_score)s, 1, %(problem_edition)s)
+        """, {'author_user_id': token.id, 'problem_id': submission.problem_id, 'code': submission.code, 'language_id': language['id'], 'total_score': total_score, 'problem_edition': problem['edition'], 'now': get_current_utc_datetime()})
         submission_id: int | None = cursor.lastrowid
         if submission_id is None:
             raise HTTPException(status_code=500, detail="Internal server error")
