@@ -1791,7 +1791,6 @@ def post_submission(submission: SubmissionCreate, authorization: Annotated[str |
             raise HTTPException(status_code=404, detail="Language does not exist")
         if testing_users.get(token.id) is not None:
             raise HTTPException(status_code=403, detail="You already have a testing submission or debug")
-        testing_users[token.id] = True
         cursor.execute("""
             INSERT INTO submissions (author_user_id, problem_id, code, language_id, time_sent, checked, compiled, compilation_details, correct_score, total_score, total_verdict_id, problem_edition)
             VALUES (%(author_user_id)s, %(problem_id)s, %(code)s, %(language_id)s, %(now)s, 0, 0, '', 0, %(total_score)s, 1, %(problem_edition)s)
@@ -1799,6 +1798,7 @@ def post_submission(submission: SubmissionCreate, authorization: Annotated[str |
         submission_id: int | None = cursor.lastrowid
         if submission_id is None:
             raise HTTPException(status_code=500, detail="Internal server error")
+        testing_users[token.id] = True
         if not no_realtime:
             current_websockets[submission_id] = CurrentWebSocket(None, None, [])
             checking_queue.submit(check_submission, submission_id, submission.problem_id, submission.code, f"{submission.language_name} ({submission.language_version})", no_realtime, token.id)
@@ -3173,7 +3173,6 @@ def post_competition_submission(competition_id: int, submission: SubmissionCreat
             raise HTTPException(status_code=403, detail="Problem is not added to this competition")
         if testing_users.get(token.id) is not None:
             raise HTTPException(status_code=403, detail="You already have a testing submission or debug")
-        testing_users[token.id] = True
         cursor.execute("""
             INSERT INTO submissions (author_user_id, problem_id, code, language_id, time_sent, checked, compiled, compilation_details, correct_score, total_score, total_verdict_id, problem_edition)
             VALUES (%(author_user_id)s, %(problem_id)s, %(code)s, %(language_id)s, %(now)s, 0, 0, '', 0, %(total_score)s, 1, %(problem_edition)s)
@@ -3185,6 +3184,7 @@ def post_competition_submission(competition_id: int, submission: SubmissionCreat
             INSERT INTO competition_submissions (competition_id, submission_id, team_id)
             VALUES (%(competition_id)s, %(submission_id)s, %(team_id)s)
         """, {'competition_id': competition_id, 'submission_id': submission_id, 'team_id': team['id']})
+        testing_users[token.id] = True
         if not no_realtime:
             current_websockets[submission_id] = CurrentWebSocket(None, None, [])
             checking_queue.submit(check_submission, submission_id, submission.problem_id, submission.code, f"{submission.language_name} ({submission.language_version})", no_realtime, token.id)
