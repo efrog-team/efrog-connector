@@ -25,7 +25,7 @@ from security.jwt import encode_token, Token, decode_token
 from typing import Annotated
 from checker_connection import Library, TestResultLib, CreateFilesResultLib, DebugResultLib
 from asyncio import run, Event
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, Future
 from current_websocket import CurrentWebSocket
 from typing import Any
 from json import dumps
@@ -38,9 +38,11 @@ from cache import cache
 from validation import text_max_length
 
 checking_queue: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=4)
+checking_queue_futures: list[Future] = []
 current_websockets: dict[int, CurrentWebSocket] = {}
 
 debugging_queue: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=2)
+debugging_queue_futures: list[Future] = []
 
 testing_users: dict[int, bool] = {}
 
@@ -199,6 +201,33 @@ def put_admin_quotas(username: str, quotas: QuotasUpateRequest, set_or_increment
             cursor.execute("UPDATE users SET competitions_quota = %(competitions_quota)s WHERE username = BINARY %(username)s", {'competitions_quota': (user_db['competitions_quota'] if set_or_increment is SetOrIncrement.increment else 0) + quotas.competitions, 'username': username})
         cursor.execute("SELECT problems_quota AS new_problems_quota, test_cases_quota AS new_test_cases_quota, competitions_quota AS new_competitions_quota FROM users WHERE username = BINARY %(username)s LIMIT 1", {'username': username})
         return JSONResponse(cursor.fetchone())
+
+@app.get("/admin/current-testing", include_in_schema=False)
+def get_admin_current_testing(admin_password: AdminPassword) -> JSONResponse:
+    global admin_continuous_failed_attempts
+    if cache.get('block_admin') == 'True':
+        raise HTTPException(status_code=403, detail="Admin request is blocked")
+    if admin_password.password != totp.at(get_current_unix_time()):
+        admin_continuous_failed_attempts += 1
+        if admin_continuous_failed_attempts >= 10:
+            cache.set('block_admin', 'True')
+        raise HTTPException(status_code=401, detail="Incorrect password")
+    admin_continuous_failed_attempts = 0
+    checking_queue_futures_running: int = 0
+    future: Future
+    for future in checking_queue_futures:
+        checking_queue_futures_running += future.running()
+    debugging_queue_futures_running: int = 0
+    for future in debugging_queue_futures:
+        debugging_queue_futures_running += future.running()
+    return JSONResponse({
+        'testing_users': testing_users,
+        'current_websockets': dict(map(lambda item: (item[0], item[1].json), current_websockets.items())),
+        'checking_queue_size': checking_queue._work_queue.qsize(),
+        'checking_queue_futures_running': checking_queue_futures_running,
+        'debugging_queue_size': debugging_queue._work_queue.qsize(),
+        'debugging_queue_futures_running': debugging_queue_futures_running
+    })
 
 @app.post("/question", tags=["Questions"], description="Ask a question that will be send to as through email with CC to you", responses={
     200: { 'model': Empty, 'description': "All good" },
@@ -1798,15 +1827,16 @@ def post_submission(submission: SubmissionCreate, authorization: Annotated[str |
         submission_id: int | None = cursor.lastrowid
         if submission_id is None:
             raise HTTPException(status_code=500, detail="Internal server error")
+        future: Future = checking_queue.submit(check_submission, submission_id, submission.problem_id, submission.code, f"{submission.language_name} ({submission.language_version})", no_realtime, token.id)
+        checking_queue_futures.append(future)
         testing_users[token.id] = True
         if not no_realtime:
             current_websockets[submission_id] = CurrentWebSocket(None, None, [])
-            checking_queue.submit(check_submission, submission_id, submission.problem_id, submission.code, f"{submission.language_name} ({submission.language_version})", no_realtime, token.id)
             return JSONResponse({
                 'submission_id': submission_id
             })
         else:
-            checking_queue.submit(check_submission, submission_id, submission.problem_id, submission.code, f"{submission.language_name} ({submission.language_version})", no_realtime, token.id).result()
+            future.result()
             cursor.execute("""
                 SELECT
                     submissions.id AS id,
@@ -2223,7 +2253,9 @@ def post_debug(debug: Debug, authorization: Annotated[str | None, Header()]) -> 
         debug_submission_id: int | None = cursor.lastrowid
         if debug_submission_id is None:
             raise HTTPException(status_code=500, detail="Internal server error")
-        return JSONResponse(debugging_queue.submit(run_debug, debug_submission_id, f"{debug.language_name} ({debug.language_version})", debug.code, [debug.input], token.id).result()[0])
+        future: Future = debugging_queue.submit(run_debug, debug_submission_id, f"{debug.language_name} ({debug.language_version})", debug.code, [debug.input], token.id)
+        debugging_queue_futures.append(future)
+        return JSONResponse(future.result()[0])
 
 @app.post("/debug/many", tags=["Debug", "Submissions"], description="Debug code on multiple test cases", responses={
     200: { 'model': DebugResults, 'description': "All good" },
@@ -2260,8 +2292,10 @@ def post_debug_many(debug: DebugMany, authorization: Annotated[str | None, Heade
         debug_submission_id: int | None = cursor.lastrowid
         if debug_submission_id is None:
             raise HTTPException(status_code=500, detail="Internal server error")
+        future: Future = debugging_queue.submit(run_debug, debug_submission_id, f"{debug.language_name} ({debug.language_version})", debug.code, debug.inputs, token.id)
+        debugging_queue_futures.append(future)
         return JSONResponse({
-            'results': debugging_queue.submit(run_debug, debug_submission_id, f"{debug.language_name} ({debug.language_version})", debug.code, debug.inputs, token.id).result()
+            'results': future.result()
         })
 
 @app.post("/competitions", tags=["Competitions"], description="Create a new competition", responses={
@@ -3184,15 +3218,16 @@ def post_competition_submission(competition_id: int, submission: SubmissionCreat
             INSERT INTO competition_submissions (competition_id, submission_id, team_id)
             VALUES (%(competition_id)s, %(submission_id)s, %(team_id)s)
         """, {'competition_id': competition_id, 'submission_id': submission_id, 'team_id': team['id']})
+        future: Future = checking_queue.submit(check_submission, submission_id, submission.problem_id, submission.code, f"{submission.language_name} ({submission.language_version})", no_realtime, token.id)
+        checking_queue_futures.append(future)
         testing_users[token.id] = True
         if not no_realtime:
             current_websockets[submission_id] = CurrentWebSocket(None, None, [])
-            checking_queue.submit(check_submission, submission_id, submission.problem_id, submission.code, f"{submission.language_name} ({submission.language_version})", no_realtime, token.id)
             return JSONResponse({
                 'submission_id': submission_id
             })
         else:
-            checking_queue.submit(check_submission, submission_id, submission.problem_id, submission.code, f"{submission.language_name} ({submission.language_version})", no_realtime, token.id).result()
+            future.result()
             cursor.execute("""
                 SELECT
                     submissions.id AS id,

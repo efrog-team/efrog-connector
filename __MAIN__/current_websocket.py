@@ -1,6 +1,7 @@
 from fastapi import WebSocket
 from asyncio import Event
 from copy import deepcopy
+from typing import Any
 
 class CurrentWebSocket():
     def __init__(self, websocket: WebSocket | None, flag: Event | None, messages: list[str]) -> None:
@@ -40,3 +41,12 @@ class CurrentWebSocket():
                 return False
         else:
             return False
+
+    @property
+    def json(self) -> dict[str, Any]:
+        return {
+            'has_websocket': self.websocket is not None,
+            'has_flag': self.flag is not None,
+            'messages': self.messages,
+            'messages_index': self.messages_index
+        }
