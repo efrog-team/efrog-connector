@@ -3134,8 +3134,11 @@ def post_competition_submission(competition_id: int, submission: SubmissionCreat
     token: Token = decode_token(authorization)
     cursor: MySQLCursorAbstract
     with ConnectionCursor(db_config) as cursor:
+        detect_error_problems(cursor, submission.problem_id, token.id, True, True, True)
         cursor.execute("SELECT edition FROM problems WHERE id = %(id)s LIMIT 1", {'id': submission.problem_id})
         problem: Any = cursor.fetchone()
+        cursor.execute("SELECT SUM(score) as total_score FROM test_cases WHERE problem_id = %(problem_id)s", {'problem_id': submission.problem_id})
+        total_score: int = cursor.fetchone()['total_score']
         cursor.execute("SELECT id FROM languages WHERE name = %(name)s AND version = %(version)s AND supported = 1 LIMIT 1", {'name': submission.language_name, 'version': submission.language_version})
         language: Any = cursor.fetchone()
         if language is None:
@@ -3165,9 +3168,6 @@ def post_competition_submission(competition_id: int, submission: SubmissionCreat
         team: Any = cursor.fetchone()
         if team is None:
             raise HTTPException(status_code=403, detail="You are not a participant of this competition")
-        cursor.execute("SELECT 1 FROM problems WHERE id = %(problem_id)s LIMIT 1", {'problem_id': submission.problem_id})
-        if cursor.fetchone() is None:
-            raise HTTPException(status_code=404, detail="Problem does not exist")
         cursor.execute("SELECT 1 FROM competition_problems WHERE competition_id = %(competition_id)s AND problem_id = %(problem_id)s LIMIT 1", {'competition_id': competition_id, 'problem_id': submission.problem_id})
         if cursor.fetchone() is None:
             raise HTTPException(status_code=403, detail="Problem is not added to this competition")
@@ -3176,8 +3176,8 @@ def post_competition_submission(competition_id: int, submission: SubmissionCreat
         testing_users[token.id] = True
         cursor.execute("""
             INSERT INTO submissions (author_user_id, problem_id, code, language_id, time_sent, checked, compiled, compilation_details, correct_score, total_score, total_verdict_id, problem_edition)
-            VALUES (%(author_user_id)s, %(problem_id)s, %(code)s, %(language_id)s, %(now)s, 0, 0, '', 0, 0, 1, %(problem_edition)s)
-        """, {'author_user_id': token.id, 'problem_id': submission.problem_id, 'code': submission.code, 'language_id': language['id'], 'problem_edition': problem['edition'], 'now': get_current_utc_datetime()})
+            VALUES (%(author_user_id)s, %(problem_id)s, %(code)s, %(language_id)s, %(now)s, 0, 0, '', 0, %(total_score)s, 1, %(problem_edition)s)
+        """, {'author_user_id': token.id, 'problem_id': submission.problem_id, 'code': submission.code, 'language_id': language['id'], 'total_score': total_score, 'problem_edition': problem['edition'], 'now': get_current_utc_datetime()})
         submission_id: int | None = cursor.lastrowid
         if submission_id is None:
             raise HTTPException(status_code=500, detail="Internal server error")
