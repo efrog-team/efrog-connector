@@ -573,7 +573,7 @@ def check_if_team_can_be_edited(cursor: MySQLCursorAbstract, team_name: str) -> 
         SELECT 1
         FROM competition_participants
         INNER JOIN teams ON competition_participants.team_id = teams.id
-        INNER JOINT competitions ON competition_participants.competition_id = competitions.id
+        INNER JOIN competitions ON competition_participants.competition_id = competitions.id
         WHERE teams.name = BINARY %(team_name)s AND teams.individual = 0 AND competitions.end_time < %(now)s
     """, {'team_name': team_name, 'now': get_current_utc_datetime()})
     return len(cursor.fetchall()) == 0
@@ -1139,8 +1139,8 @@ def update_edition(cursor: MySQLCursorAbstract, problem_id: int) -> None:
     cursor.execute("""
         UPDATE competition_problems
         INNER JOIN competitions ON competition_problems.competition_id = competitions.id
-        SET problem_edition = problem_edition + 1
-        WHERE competition_problems.problem_id = %(problem_id)s AND competitions.end_time < %(now)s
+        SET competition_problems.problem_edition = competition_problems.problem_edition + 1
+        WHERE competition_problems.problem_id = %(problem_id)s AND competitions.end_time > %(now)s
     """, {'problem_id': problem_id, 'now': get_current_utc_datetime()})
 
 @app.put("/problems/{problem_id}", tags=["Problems"], description="Update a problem", responses={
