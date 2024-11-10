@@ -1782,11 +1782,11 @@ def check_submission(submission_id: int, problem_id: int, code: str, language: s
             SET checked = 1, correct_score = %(correct_score)s, total_verdict_id = %(total_verdict_id)s
             WHERE id = %(submission_id)s
         """, {'submission_id': submission_id, 'correct_score': correct_score, 'total_verdict_id': total_verdict[0] + 2})
+        testing_users.pop(user_id, None)
         if not no_realtime:
             current_websockets[submission_id].safe_set_flag()
             if current_websockets[submission_id].websocket is None and current_websockets[submission_id].flag is None:
                 del current_websockets[submission_id]
-    testing_users.pop(user_id, None)
 
 @app.post("/submissions", tags=["Submissions"], description="Create a new submission", responses={
     200: { 'model': SubmissionId | SubmissionFull, 'description': "All good (reponse schema depends on the value of no_realtime (false or true))"},
