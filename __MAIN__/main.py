@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Header, WebSocket
+from fastapi import FastAPI, HTTPException, Header, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from models import Empty, Error, Can
@@ -24,9 +24,8 @@ from security.hash import hash_hex
 from security.jwt import encode_token, Token, decode_token
 from typing import Annotated
 from checker_connection import Library, TestResultLib, CreateFilesResultLib, DebugResultLib
-from asyncio import run, Event
 from concurrent.futures import ThreadPoolExecutor, Future
-from current_websocket import CurrentWebSocket
+from realtime_testing import RealtimeTesting
 from typing import Any
 from json import dumps
 from smtplib import SMTP_SSL
@@ -39,12 +38,12 @@ from validation import text_max_length
 
 checking_queue: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=4)
 checking_queue_futures: list[Future] = []
-current_websockets: dict[int, CurrentWebSocket] = {}
 
 debugging_queue: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=2)
 debugging_queue_futures: list[Future] = []
 
 testing_users: dict[int, bool] = {}
+realtime_testings: dict[int, RealtimeTesting] = {}
 
 totp: TOTP = TOTP(cache.get('totp_secret'))
 
@@ -89,7 +88,7 @@ def post_admin_query(admin_query: AdminQuery, db_or_cache: DbOrCache) -> JSONRes
     global admin_continuous_failed_attempts
     if cache.get('block_admin') == 'True':
         raise HTTPException(status_code=403, detail="Admin request is blocked")
-    if admin_query.password != totp.at(get_current_unix_time()):
+    if admin_query.password != totp.at(get_current_unix_time(True)):
         admin_continuous_failed_attempts += 1
         if admin_continuous_failed_attempts >= 10:
             cache.set('block_admin', 'True')
@@ -127,7 +126,7 @@ def put_admin_verify(admin_password: AdminPassword, username: str) -> JSONRespon
     global admin_continuous_failed_attempts
     if cache.get('block_admin') == 'True':
         raise HTTPException(status_code=403, detail="Admin request is blocked")
-    if admin_password.password != totp.at(get_current_unix_time()):
+    if admin_password.password != totp.at(get_current_unix_time(True)):
         admin_continuous_failed_attempts += 1
         if admin_continuous_failed_attempts >= 10:
             cache.set('block_admin', 'True')
@@ -154,7 +153,7 @@ def put_admin_approve(admin_password: AdminPassword, problems_or_competitions: P
     global admin_continuous_failed_attempts
     if cache.get('block_admin') == 'True':
         raise HTTPException(status_code=403, detail="Admin request is blocked")
-    if admin_password.password != totp.at(get_current_unix_time()):
+    if admin_password.password != totp.at(get_current_unix_time(True)):
         admin_continuous_failed_attempts += 1
         if admin_continuous_failed_attempts >= 10:
             cache.set('block_admin', 'True')
@@ -175,7 +174,7 @@ def put_admin_quotas(username: str, quotas: QuotasUpateRequest, set_or_increment
     global admin_continuous_failed_attempts
     if cache.get('block_admin') == 'True':
         raise HTTPException(status_code=403, detail="Admin request is blocked")
-    if quotas.password != totp.at(get_current_unix_time()):
+    if quotas.password != totp.at(get_current_unix_time(True)):
         admin_continuous_failed_attempts += 1
         if admin_continuous_failed_attempts >= 10:
             cache.set('block_admin', 'True')
@@ -207,7 +206,7 @@ def get_admin_current_testing(admin_password: AdminPassword) -> JSONResponse:
     global admin_continuous_failed_attempts
     if cache.get('block_admin') == 'True':
         raise HTTPException(status_code=403, detail="Admin request is blocked")
-    if admin_password.password != totp.at(get_current_unix_time()):
+    if admin_password.password != totp.at(get_current_unix_time(True)):
         admin_continuous_failed_attempts += 1
         if admin_continuous_failed_attempts >= 10:
             cache.set('block_admin', 'True')
@@ -222,7 +221,7 @@ def get_admin_current_testing(admin_password: AdminPassword) -> JSONResponse:
         debugging_queue_futures_running += future.running()
     return JSONResponse({
         'testing_users': testing_users,
-        'current_websockets': dict(map(lambda item: (item[0], item[1].json), current_websockets.items())),
+        'realtime_testings': dict(map(lambda item: (item[0], item[1].to_json()), realtime_testings.items())),
         'checking_queue_size': checking_queue._work_queue.qsize(),
         'checking_queue_futures_running': checking_queue_futures_running,
         'debugging_queue_size': debugging_queue._work_queue.qsize(),
@@ -1748,7 +1747,7 @@ def check_submission(submission_id: int, problem_id: int, code: str, language: s
                 VALUES (%(submission_id)s, %(test_case_id)s, %(verdict_id)s, %(time_taken)s, %(cpu_time_taken)s, %(physical_memory_taken)s)
             """, {'submission_id': submission_id, 'test_case_id': test_case['id'], 'verdict_id': test_result.status + 2, 'time_taken': test_result.time, 'cpu_time_taken': test_result.cpu_time, 'physical_memory_taken': test_result.physical_memory})
             if not no_realtime:
-                run(current_websockets[submission_id].send_message(dumps({
+                realtime_testings[submission_id].add_message(dumps({
                     'type': 'result',
                     'status': 202,
                     'count': index + 1,
@@ -1761,11 +1760,18 @@ def check_submission(submission_id: int, problem_id: int, code: str, language: s
                         'cpu_time_taken': test_result.cpu_time,
                         'physical_memory_taken': test_result.physical_memory
                     }
-                })))
+                }))
             total_score += test_case['score']
             total_verdict = max(total_verdict, (test_result.status, verdict['text']))
+        lib.delete_files(submission_id, 1)
+        cursor.execute("""
+            UPDATE submissions
+            SET checked = 1, correct_score = %(correct_score)s, total_verdict_id = %(total_verdict_id)s
+            WHERE id = %(submission_id)s
+        """, {'submission_id': submission_id, 'correct_score': correct_score, 'total_verdict_id': total_verdict[0] + 2})
+        testing_users.pop(user_id, None)
         if not no_realtime:
-            run(current_websockets[submission_id].send_message(dumps({
+            realtime_testings[submission_id].add_message(dumps({
                 'type': 'totals',
                 'status': 200,
                 'totals': {
@@ -1775,18 +1781,10 @@ def check_submission(submission_id: int, problem_id: int, code: str, language: s
                     'total_score': total_score,
                     'total_verdict': total_verdict[1]
                 }
-            })))
-        lib.delete_files(submission_id, 1)
-        cursor.execute("""
-            UPDATE submissions
-            SET checked = 1, correct_score = %(correct_score)s, total_verdict_id = %(total_verdict_id)s
-            WHERE id = %(submission_id)s
-        """, {'submission_id': submission_id, 'correct_score': correct_score, 'total_verdict_id': total_verdict[0] + 2})
-        testing_users.pop(user_id, None)
-        if not no_realtime:
-            current_websockets[submission_id].safe_set_flag()
-            if current_websockets[submission_id].websocket is None and current_websockets[submission_id].flag is None:
-                del current_websockets[submission_id]
+            }))
+            realtime_testings[submission_id].finished = True
+            if not realtime_testings[submission_id].opened_websocket:
+                del realtime_testings[submission_id]
 
 @app.post("/submissions", tags=["Submissions"], description="Create a new submission", responses={
     200: { 'model': SubmissionId | SubmissionFull, 'description': "All good (reponse schema depends on the value of no_realtime (false or true))"},
@@ -1831,7 +1829,7 @@ def post_submission(submission: SubmissionCreate, authorization: Annotated[str |
         checking_queue_futures.append(future)
         testing_users[token.id] = True
         if not no_realtime:
-            current_websockets[submission_id] = CurrentWebSocket(None, None, [])
+            realtime_testings[submission_id] = RealtimeTesting()
             return JSONResponse({
                 'submission_id': submission_id
             })
@@ -1979,30 +1977,34 @@ def websocket_submissions_dummy(submission_id: int) -> JSONResponse:
 
 @app.websocket("/ws/submissions/{submission_id}/realtime")
 async def websocket_endpoint_submissions(websocket: WebSocket, submission_id: int):
-    await websocket.accept()
     try:
-        if current_websockets[submission_id].websocket is None:
-            current_websockets[submission_id].websocket = websocket
-            current_websockets[submission_id].flag = Event()
-            current_websockets[submission_id].messages_index = 0
-            flag: Event | None = current_websockets[submission_id].flag
-            if flag is not None:
-                await flag.wait()
-            await current_websockets[submission_id].send_accumulated()
-            del current_websockets[submission_id]
+        await websocket.accept()
+        if submission_id in realtime_testings:
+            if not realtime_testings[submission_id].opened_websocket:
+                realtime_testings[submission_id].opened_websocket = True
+                while not realtime_testings[submission_id].finished:
+                    await realtime_testings[submission_id].new_messages_flag.wait()
+                    for message in realtime_testings[submission_id].get_unsent_messages():
+                        await websocket.send_text(message)
+            else:
+                await websocket.send_text(dumps({
+                    'type': 'message',
+                    'status': 409,
+                    'message': "There is already a websocket opened for this submission"
+                }))
         else:
             await websocket.send_text(dumps({
                 'type': 'message',
-                'status': 409,
-                'message': "There is already a websocket opened for this submission"
+                'status': 404,
+                'message': f"There is no submission testing with such id. Try to access: GET http{'' if config['API_DOMAIN'] is not None and config['API_DOMAIN'][:config['API_DOMAIN'].find(':')] == 'localhost' else 's'}://{config['API_DOMAIN']}/submissions/{submission_id}"
             }))
-    except:
-        await websocket.send_text(dumps({
-            'type': 'message',
-            'status': 404,
-            'message': f"There is no submission testing with such id. Try to access: GET http{'' if config['API_DOMAIN'] is not None and config['API_DOMAIN'][:config['API_DOMAIN'].find(':')] == 'localhost' else 's'}://{config['API_DOMAIN']}/submissions/{submission_id}"
-        }))
-    await websocket.close()
+        await websocket.close()
+    except WebSocketDisconnect:
+        pass
+    if submission_id in realtime_testings:
+        realtime_testings[submission_id].opened_websocket = False
+        if realtime_testings[submission_id].finished:
+            del realtime_testings[submission_id]
 
 @app.get("/submissions/{submission_id}/public", tags=["Submissions"], description="Get public data of a submission", responses={
     200: { 'model': SubmissionPublic, 'description': "All good" },
@@ -3222,7 +3224,7 @@ def post_competition_submission(competition_id: int, submission: SubmissionCreat
         checking_queue_futures.append(future)
         testing_users[token.id] = True
         if not no_realtime:
-            current_websockets[submission_id] = CurrentWebSocket(None, None, [])
+            realtime_testings[submission_id] = RealtimeTesting()
             return JSONResponse({
                 'submission_id': submission_id
             })
