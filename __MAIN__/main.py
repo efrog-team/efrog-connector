@@ -2990,7 +2990,7 @@ def get_competition_problem(competition_id: int, problem_id: int, authorization:
                     SELECT 1
                     FROM team_members
                     INNER JOIN competition_participants ON team_members.team_id = competition_participants.team_id
-                    WHERE competition_participants.competition_id = %(id)s AND competition_participants.author_confirmed = 1 AND team_members.member_user_id = %(user_id)s AND team_members.confirmed = 1""" + " AND team_members.coach = 0" if not competition['ended'] else "" + """
+                    WHERE competition_participants.competition_id = %(id)s AND competition_participants.author_confirmed = 1 AND team_members.member_user_id = %(user_id)s AND team_members.confirmed = 1""" + (" AND team_members.coach = 0" if not competition['ended'] else "") + """
                     LIMIT 1
                 """, {'id': competition_id, 'user_id': token.id})
                 if cursor.fetchone() is None:
@@ -3021,15 +3021,27 @@ def get_competition_problem(competition_id: int, problem_id: int, authorization:
         if competition_problem is None:
             raise HTTPException(status_code=404, detail="Problem is not added to this competition")
         problem['edition'] = competition_problem['problem_edition']
-        if team is not None:
+        if authorization is not None and authorization != '':
+            token: Token = decode_token(authorization)
             cursor.execute("""
+                SELECT team_members.team_id AS id
+                FROM team_members
+                INNER JOIN competition_participants ON team_members.team_id = competition_participants.team_id
+                WHERE competition_participants.competition_id = %(id)s AND competition_participants.author_confirmed = 1 AND team_members.member_user_id = %(user_id)s AND team_members.confirmed = 1""" + (" AND team_members.coach = 0" if not competition['ended'] else "") + """
+                LIMIT 1
+            """, {'id': competition_id, 'user_id': token.id})
+            team: Any = cursor.fetchone()
+            if team is not None:
+                cursor.execute("""
                     SELECT 1
                     FROM submissions
                     INNER JOIN competition_submissions ON submissions.id = competition_submissions.submission_id
                     INNER JOIN competitions ON competition_submissions.competition_id = competitions.id
                     WHERE competitions.id = %(competition_id)s AND competition_submissions.team_id = %(team_id)s AND submissions.problem_id = %(problem_id)s AND submissions.time_sent BETWEEN competitions.start_time AND competitions.end_time AND submissions.correct_score = submissions.total_score
                 """ + (" AND submissions.problem_edition = %(problem_edition)s" if competition['only_count_submissions_with_zero_edition_difference'] else '') + " LIMIT 1", {'competition_id': competition_id, 'team_id': team['id'], 'problem_id': problem['id'], 'problem_edition': competition_problem['problem_edition']})
-            problem['solved'] = cursor.fetchone() is not None
+                problem['solved'] = cursor.fetchone() is not None
+            else:
+                problem['solved'] = None
         else:
             problem['solved'] = None
         cursor.execute("""
@@ -3053,7 +3065,6 @@ def get_competition_problems(competition_id: int, authorization: Annotated[str |
         competition: Any = cursor.fetchone()
         if competition is None:
             raise HTTPException(status_code=404, detail="Competition does not exist")
-        team: Any = None
         if not competition['started']:
             token: Token = decode_token(authorization)
             if competition['author_user_id'] != token.id:
@@ -3065,7 +3076,7 @@ def get_competition_problems(competition_id: int, authorization: Annotated[str |
                     SELECT 1
                     FROM team_members
                     INNER JOIN competition_participants ON team_members.team_id = competition_participants.team_id
-                    WHERE competition_participants.competition_id = %(id)s AND competition_participants.author_confirmed = 1 AND team_members.member_user_id = %(user_id)s AND team_members.confirmed = 1""" + " AND team_members.coach = 0" if not competition['ended'] else "" + """
+                    WHERE competition_participants.competition_id = %(id)s AND competition_participants.author_confirmed = 1 AND team_members.member_user_id = %(user_id)s AND team_members.confirmed = 1""" + (" AND team_members.coach = 0" if not competition['ended'] else "") + """
                     LIMIT 1
                 """, {'id': competition_id, 'user_id': token.id})
                 if cursor.fetchone() is None:
@@ -3095,15 +3106,27 @@ def get_competition_problems(competition_id: int, authorization: Annotated[str |
             if competition_problem is None:
                 raise HTTPException(status_code=404, detail="Problem is not added to this competition")
             problem['edition'] = competition_problem['problem_edition']
-            if team is not None:
+            if authorization is not None and authorization != '':
+                token: Token = decode_token(authorization)
                 cursor.execute("""
-                    SELECT 1
-                    FROM submissions
-                    INNER JOIN competition_submissions ON submissions.id = competition_submissions.submission_id
-                    INNER JOIN competitions ON competition_submissions.competition_id = competitions.id
-                    WHERE competitions.id = %(competition_id)s AND competition_submissions.team_id = %(team_id)s AND submissions.problem_id = %(problem_id)s AND submissions.time_sent BETWEEN competitions.start_time AND competitions.end_time AND submissions.correct_score = submissions.total_score
-                """ + (" AND submissions.problem_edition = %(problem_edition)s" if competition['only_count_submissions_with_zero_edition_difference'] else '') + " LIMIT 1", {'competition_id': competition_id, 'team_id': team['id'], 'problem_id': problem['id'], 'problem_edition': competition_problem['problem_edition']})
-                problem['solved'] = cursor.fetchone() is not None
+                    SELECT team_members.team_id AS id
+                    FROM team_members
+                    INNER JOIN competition_participants ON team_members.team_id = competition_participants.team_id
+                    WHERE competition_participants.competition_id = %(id)s AND competition_participants.author_confirmed = 1 AND team_members.member_user_id = %(user_id)s AND team_members.confirmed = 1""" + (" AND team_members.coach = 0" if not competition['ended'] else "") + """
+                    LIMIT 1
+                """, {'id': competition_id, 'user_id': token.id})
+                team: Any = cursor.fetchone()
+                if team is not None:
+                    cursor.execute("""
+                        SELECT 1
+                        FROM submissions
+                        INNER JOIN competition_submissions ON submissions.id = competition_submissions.submission_id
+                        INNER JOIN competitions ON competition_submissions.competition_id = competitions.id
+                        WHERE competitions.id = %(competition_id)s AND competition_submissions.team_id = %(team_id)s AND submissions.problem_id = %(problem_id)s AND submissions.time_sent BETWEEN competitions.start_time AND competitions.end_time AND submissions.correct_score = submissions.total_score
+                    """ + (" AND submissions.problem_edition = %(problem_edition)s" if competition['only_count_submissions_with_zero_edition_difference'] else '') + " LIMIT 1", {'competition_id': competition_id, 'team_id': team['id'], 'problem_id': problem['id'], 'problem_edition': competition_problem['problem_edition']})
+                    problem['solved'] = cursor.fetchone() is not None
+                else:
+                    problem['solved'] = None
             else:
                 problem['solved'] = None
             cursor.execute("""
