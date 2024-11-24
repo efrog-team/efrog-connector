@@ -21,6 +21,10 @@ class RealtimeTesting():
         self.new_messages_flag.clear()
         return unsent_messages
 
+    def reset_unsent(self) -> None:
+        self.messages_index = 0
+        self.new_messages_flag.set()
+
     def to_json(self) -> dict[str, Any]:
         return {
             'new_messages_flag': self.new_messages_flag.is_set(),

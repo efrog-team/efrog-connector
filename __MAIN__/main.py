@@ -1,4 +1,5 @@
-from fastapi import FastAPI, HTTPException, Header, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Header, WebSocket
+from websockets.exceptions import ConnectionClosed
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from models import Empty, Error, Can
@@ -1979,7 +1980,7 @@ def websocket_submissions_dummy(submission_id: int) -> JSONResponse:
 async def websocket_endpoint_submissions(websocket: WebSocket, submission_id: int):
     try:
         await websocket.accept()
-        if submission_id in realtime_testings:
+        try:
             if not realtime_testings[submission_id].opened_websocket:
                 realtime_testings[submission_id].opened_websocket = True
                 while not realtime_testings[submission_id].finished:
@@ -1992,17 +1993,18 @@ async def websocket_endpoint_submissions(websocket: WebSocket, submission_id: in
                     'status': 409,
                     'message': "There is already a websocket opened for this submission"
                 }))
-        else:
+        except KeyError:
             await websocket.send_text(dumps({
                 'type': 'message',
                 'status': 404,
                 'message': f"There is no submission testing with such id. Try to access: GET http{'' if config['API_DOMAIN'] is not None and config['API_DOMAIN'][:config['API_DOMAIN'].find(':')] == 'localhost' else 's'}://{config['API_DOMAIN']}/submissions/{submission_id}"
             }))
         await websocket.close()
-    except WebSocketDisconnect:
+    except ConnectionClosed:
         pass
     if submission_id in realtime_testings:
         realtime_testings[submission_id].opened_websocket = False
+        realtime_testings[submission_id].reset_unsent()
         if realtime_testings[submission_id].finished:
             del realtime_testings[submission_id]
 
